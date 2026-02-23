@@ -61,6 +61,8 @@ db.exec(`
     booking_id INTEGER,
     sender_id INTEGER,
     content TEXT,
+    attachment_url TEXT,
+    attachment_type TEXT, -- 'image', 'document'
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (booking_id) REFERENCES bookings(id),
     FOREIGN KEY (sender_id) REFERENCES users(id)
@@ -78,32 +80,77 @@ if (!existingAdmin) {
 
 // Seed Districts & Technicians
 const districts = ['Patna', 'Purnia', 'Darbhanga', 'Sitamarhi', 'Madhubani', 'Madhepura', 'Katihar', 'Saharsa', 'East Champaran', 'West Champaran', 'Begusarai', 'Barauni'];
-const services = ['Electrician', 'Plumber', 'Carpenter', 'AC Repair', 'Painter'];
+
+const coreServices = ['Electrician', 'Plumber', 'AC Repair', 'Carpenter', 'Painter'];
+const standardServices = ['Maid', 'Car Wash', 'Haircut'];
+
+const techNames = ['Rohit Kumar', 'Rahul Singh', 'Aman Verma', 'Sumit Yadav', 'Vikram Gupta', 'Manoj Tiwari', 'Sunil Sharma', 'Pankaj Mishra', 'Rajesh Ranjan', 'Anil Paswan', 'Kavita Devi', 'Pooja Kumari', 'Sita Devi', 'Deepak Kumar', 'Suresh Singh'];
 
 districts.forEach(district => {
   const count = db.prepare('SELECT COUNT(*) as count FROM users JOIN technicians ON users.id = technicians.user_id WHERE technicians.district = ?').get(district).count;
   if (count < 2) {
-    for (let i = 1; i <= 2; i++) {
-      const email = `${district.toLowerCase().replace(' ', '')}${i}@fixmate.com`;
+    // Seed Core Technicians
+    coreServices.forEach((service, idx) => {
+      const name = techNames[Math.floor(Math.random() * techNames.length)];
+      const email = `${district.toLowerCase().replace(' ', '')}_${service.toLowerCase().replace(' ', '')}_${idx}@fixmate.com`;
       const hashedPassword = bcrypt.hashSync('tech123', 10);
+      
       const userResult = db.prepare('INSERT INTO users (name, email, password, role, phone, location) VALUES (?, ?, ?, ?, ?, ?)').run(
-        `${district} Tech ${i}`,
+        name,
         email,
         hashedPassword,
         'technician',
-        `987654321${i}`,
+        `98765${Math.floor(10000 + Math.random() * 90000)}`,
         district
       );
+      
+      let charge = 0;
+      if (service === 'AC Repair') {
+        charge = 1000 + Math.floor(Math.random() * 500); // ₹1000 - ₹1500
+      } else {
+        charge = 500 + Math.floor(Math.random() * 1000); // ₹500 - ₹1500
+      }
+
       db.prepare('INSERT INTO technicians (user_id, skills, experience, district, is_verified, base_charge, bio) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
         userResult.lastInsertRowid,
-        services[Math.floor(Math.random() * services.length)],
+        service,
         Math.floor(Math.random() * 10) + 1,
         district,
         1,
-        300 + Math.floor(Math.random() * 500),
-        `Expert technician serving ${district} with over 5 years of experience.`
+        charge,
+        `Expert ${service} serving ${district}.`
       );
-    }
+    });
+
+    // Seed Standard Technicians
+    standardServices.forEach((service, idx) => {
+      const name = techNames[Math.floor(Math.random() * techNames.length)];
+      const email = `${district.toLowerCase().replace(' ', '')}_std_${service.toLowerCase().replace(' ', '')}_${idx}@fixmate.com`;
+      const hashedPassword = bcrypt.hashSync('tech123', 10);
+      
+      const userResult = db.prepare('INSERT INTO users (name, email, password, role, phone, location) VALUES (?, ?, ?, ?, ?, ?)').run(
+        name,
+        email,
+        hashedPassword,
+        'technician',
+        `88765${Math.floor(10000 + Math.random() * 90000)}`,
+        district
+      );
+      
+      let charge = 0;
+      if (service === 'Maid') charge = 500 + Math.floor(Math.random() * 300); // ₹500 - ₹800
+      else charge = 100 + Math.floor(Math.random() * 150); // ₹100 - ₹250
+
+      db.prepare('INSERT INTO technicians (user_id, skills, experience, district, is_verified, base_charge, bio) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        userResult.lastInsertRowid,
+        service,
+        Math.floor(Math.random() * 5) + 1,
+        district,
+        1,
+        charge,
+        `Reliable ${service} service in ${district}.`
+      );
+    });
   }
 });
 
@@ -111,8 +158,17 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Ensure messages table has attachment columns (migration)
+  try {
+    db.prepare('ALTER TABLE messages ADD COLUMN attachment_url TEXT').run();
+    db.prepare('ALTER TABLE messages ADD COLUMN attachment_type TEXT').run();
+  } catch (e) {
+    // Columns probably already exist
+  }
+
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // --- Auth Middleware ---
   const authenticate = (req: any, res: any, next: any) => {
@@ -198,14 +254,16 @@ async function startServer() {
   });
 
   app.post('/api/bookings/:id/negotiate', authenticate, (req: any, res) => {
-    const { price } = req.body;
+    const { price, confirm } = req.body;
     const bookingId = req.params.id;
     
     // Calculate Platform Fee (Dynamic)
     let platformFeePercent = 0;
     const p = parseInt(price);
     
-    if (p >= 250 && p <= 450) {
+    if (p < 250) {
+      platformFeePercent = 2.5;
+    } else if (p >= 250 && p <= 450) {
       if (p === 280) platformFeePercent = 2.73;
       else if (p >= 290 && p <= 299) platformFeePercent = 2.93;
       else platformFeePercent = 3.0;
@@ -216,13 +274,14 @@ async function startServer() {
     } else if (p > 1000 && p <= 1500) {
       platformFeePercent = 10.0;
     } else {
-      platformFeePercent = 12.0; // Default for high end
+      platformFeePercent = 12.0;
     }
 
     const platformFee = (p * platformFeePercent) / 100;
+    const status = confirm ? 'confirmed' : 'negotiating';
 
-    db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ?, status = "confirmed" WHERE id = ?').run(price, platformFee, bookingId);
-    res.json({ success: true, platformFee });
+    db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ?, status = ? WHERE id = ?').run(price, platformFee, status, bookingId);
+    res.json({ success: true, platformFee, status });
   });
 
   // Messages
@@ -232,10 +291,69 @@ async function startServer() {
   });
 
   app.post('/api/bookings/:id/messages', authenticate, (req: any, res) => {
-    const { content } = req.body;
+    const { content, attachment_url, attachment_type } = req.body;
     const sender_id = req.user.id;
-    db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(req.params.id, sender_id, content);
+    db.prepare('INSERT INTO messages (booking_id, sender_id, content, attachment_url, attachment_type) VALUES (?, ?, ?, ?, ?)').run(req.params.id, sender_id, content, attachment_url, attachment_type);
     res.json({ success: true });
+  });
+
+  app.post('/api/bookings/:id/messages/auto', authenticate, (req: any, res) => {
+    const { content, proposedPrice } = req.body;
+    const bookingId = req.params.id;
+    
+    // Get technician user ID for this booking
+    const booking = db.prepare('SELECT technicians.user_id FROM bookings JOIN technicians ON bookings.technician_id = technicians.id WHERE bookings.id = ?').get(bookingId);
+    
+    if (booking) {
+      // Insert message as technician
+      db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.user_id, content);
+      
+      // Update proposed price
+      db.prepare('UPDATE bookings SET negotiated_price = ? WHERE id = ?').run(proposedPrice, bookingId);
+    }
+    
+    res.json({ success: true });
+  });
+
+  app.post('/api/bookings/:id/messages/counter-reply', authenticate, (req: any, res) => {
+    const { counterPrice } = req.body;
+    const bookingId = req.params.id;
+    
+    const booking = db.prepare(`
+      SELECT b.*, t.user_id as tech_user_id, t.district, t.skills
+      FROM bookings b
+      JOIN technicians t ON b.technician_id = t.id
+      WHERE b.id = ?
+    `).get(bookingId);
+    
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    const currentPrice = booking.negotiated_price;
+    let reply = '';
+    let finalPrice = currentPrice;
+    let status = 'negotiating';
+
+    // Simple logic: If counter is within 15% of current price, or if it's the second counter, maybe agree.
+    const diff = currentPrice - counterPrice;
+    const percentDiff = (diff / currentPrice) * 100;
+
+    if (percentDiff <= 15) {
+      reply = `Alright, I agree to ₹${counterPrice}. It's a fair price for the work. You can proceed to confirm the booking now.`;
+      finalPrice = counterPrice;
+      // We don't set status to confirmed yet, customer must click "Accept"
+    } else {
+      const middleGround = Math.floor((currentPrice + counterPrice) / 2);
+      reply = `₹${counterPrice} is a bit low considering the effort and travel to ${booking.district}. How about we settle at ₹${middleGround}? This is my best offer.`;
+      finalPrice = middleGround;
+    }
+
+    // Insert message as technician
+    db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.tech_user_id, reply);
+    
+    // Update booking with the new "proposed" price from technician
+    db.prepare('UPDATE bookings SET negotiated_price = ? WHERE id = ?').run(finalPrice, bookingId);
+    
+    res.json({ success: true, proposedPrice: finalPrice });
   });
 
   // Admin
