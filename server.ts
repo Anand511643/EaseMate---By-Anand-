@@ -21,8 +21,9 @@ db.exec(`
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     role TEXT DEFAULT 'customer', -- 'customer', 'technician', 'admin'
-    phone TEXT,
-    location TEXT,
+    phone TEXT NOT NULL,
+    location TEXT NOT NULL, -- Permanent Address
+    district TEXT NOT NULL,
     last_fee_payment_date DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -33,6 +34,7 @@ db.exec(`
     skills TEXT,
     experience INTEGER,
     district TEXT,
+    id_number TEXT, -- Aadhar or other ID
     id_proof_url TEXT,
     is_verified INTEGER DEFAULT 0,
     base_charge INTEGER,
@@ -51,6 +53,8 @@ db.exec(`
     negotiated_price INTEGER,
     platform_fee REAL,
     insurance_applied INTEGER DEFAULT 1,
+    payment_method TEXT, -- 'online', 'cod'
+    payment_status TEXT DEFAULT 'pending', -- 'pending', 'paid'
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (customer_id) REFERENCES users(id),
     FOREIGN KEY (technician_id) REFERENCES technicians(id)
@@ -75,7 +79,15 @@ const adminPassword = 'AnA@mrit8567';
 const existingAdmin = db.prepare('SELECT * FROM users WHERE email = ?').get(adminEmail);
 if (!existingAdmin) {
   const hashedPassword = bcrypt.hashSync(adminPassword, 10);
-  db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run('Admin Anand', adminEmail, hashedPassword, 'admin');
+  db.prepare('INSERT INTO users (name, email, password, role, phone, location, district) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    'Admin Anand', 
+    adminEmail, 
+    hashedPassword, 
+    'admin',
+    '9142262449',
+    'IT Hub Patna',
+    'Patna'
+  );
 }
 
 // Seed Districts & Technicians
@@ -95,12 +107,13 @@ districts.forEach(district => {
       const email = `${district.toLowerCase().replace(' ', '')}_${service.toLowerCase().replace(' ', '')}_${idx}@fixmate.com`;
       const hashedPassword = bcrypt.hashSync('tech123', 10);
       
-      const userResult = db.prepare('INSERT INTO users (name, email, password, role, phone, location) VALUES (?, ?, ?, ?, ?, ?)').run(
+      const userResult = db.prepare('INSERT INTO users (name, email, password, role, phone, location, district) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
         name,
         email,
         hashedPassword,
         'technician',
         `98765${Math.floor(10000 + Math.random() * 90000)}`,
+        district,
         district
       );
       
@@ -128,12 +141,13 @@ districts.forEach(district => {
       const email = `${district.toLowerCase().replace(' ', '')}_std_${service.toLowerCase().replace(' ', '')}_${idx}@fixmate.com`;
       const hashedPassword = bcrypt.hashSync('tech123', 10);
       
-      const userResult = db.prepare('INSERT INTO users (name, email, password, role, phone, location) VALUES (?, ?, ?, ?, ?, ?)').run(
+      const userResult = db.prepare('INSERT INTO users (name, email, password, role, phone, location, district) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
         name,
         email,
         hashedPassword,
         'technician',
         `88765${Math.floor(10000 + Math.random() * 90000)}`,
+        district,
         district
       );
       
@@ -154,9 +168,53 @@ districts.forEach(district => {
   }
 });
 
+const getPriceRange = (serviceType: string) => {
+  if (serviceType === 'AC Repair') return { min: 1000, max: 1500 };
+  if (['Electrician', 'Plumber', 'Carpenter', 'Painter'].includes(serviceType)) return { min: 500, max: 1500 };
+  if (serviceType === 'Maid') return { min: 500, max: 800 };
+  if (['Car Wash', 'Haircut'].includes(serviceType)) return { min: 100, max: 250 };
+  return { min: 100, max: 2000 };
+};
+
+const calculatePlatformFee = (price: number) => {
+  let platformFeePercent = 0;
+  if (price < 250) {
+    platformFeePercent = 2.5;
+  } else if (price >= 250 && price <= 450) {
+    if (price === 280) platformFeePercent = 2.73;
+    else if (price >= 290 && price <= 299) platformFeePercent = 2.93;
+    else platformFeePercent = 3.0;
+  } else if (price > 450 && price <= 700) {
+    platformFeePercent = 5.0;
+  } else if (price > 700 && price <= 1000) {
+    platformFeePercent = 8.0;
+  } else if (price > 1000 && price <= 1500) {
+    platformFeePercent = 10.0;
+  } else {
+    platformFeePercent = 12.0;
+  }
+  return (price * platformFeePercent) / 100;
+};
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Ensure bookings table has payment columns
+  try {
+    db.prepare('ALTER TABLE bookings ADD COLUMN payment_method TEXT').run();
+    db.prepare('ALTER TABLE bookings ADD COLUMN payment_status TEXT DEFAULT "pending"').run();
+  } catch (e) {}
+
+  // Ensure users table has district column
+  try {
+    db.prepare('ALTER TABLE users ADD COLUMN district TEXT').run();
+  } catch (e) {}
+  
+  // Ensure technicians table has id_number column
+  try {
+    db.prepare('ALTER TABLE technicians ADD COLUMN id_number TEXT').run();
+  } catch (e) {}
 
   // Ensure messages table has attachment columns (migration)
   try {
@@ -186,20 +244,32 @@ async function startServer() {
 
   // Auth
   app.post('/api/auth/signup', (req, res) => {
-    const { name, email, password, role, phone, location } = req.body;
+    const { name, email, password, role, phone, location, district } = req.body;
     try {
+      if (!phone || !location || !district) {
+        return res.status(400).json({ error: 'Mobile number, address, and district are mandatory' });
+      }
+
       const hashedPassword = bcrypt.hashSync(password, 10);
-      const result = db.prepare('INSERT INTO users (name, email, password, role, phone, location) VALUES (?, ?, ?, ?, ?, ?)').run(name, email, hashedPassword, role, phone, location);
+      const result = db.prepare('INSERT INTO users (name, email, password, role, phone, location, district) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        name, email, hashedPassword, role, phone, location, district
+      );
       
       if (role === 'technician') {
-        const { skills, experience, district } = req.body;
-        db.prepare('INSERT INTO technicians (user_id, skills, experience, district) VALUES (?, ?, ?, ?)').run(result.lastInsertRowid, skills, experience, district);
+        const { skills, experience, id_number } = req.body;
+        if (!id_number) {
+          return res.status(400).json({ error: 'ID number (Aadhar) is mandatory for technicians' });
+        }
+        db.prepare('INSERT INTO technicians (user_id, skills, experience, district, id_number) VALUES (?, ?, ?, ?, ?)').run(
+          result.lastInsertRowid, skills, experience, district, id_number
+        );
       }
 
       const token = jwt.sign({ id: result.lastInsertRowid, role, email }, JWT_SECRET);
-      res.json({ token, user: { id: result.lastInsertRowid, name, email, role } });
+      res.json({ token, user: { id: result.lastInsertRowid, name, email, role, district } });
     } catch (err: any) {
-      res.status(400).json({ error: 'Email already exists' });
+      console.error(err);
+      res.status(400).json({ error: 'Email already exists or invalid data' });
     }
   });
 
@@ -210,7 +280,7 @@ async function startServer() {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET);
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, district: user.district } });
   });
 
   // Technicians
@@ -256,32 +326,28 @@ async function startServer() {
   app.post('/api/bookings/:id/negotiate', authenticate, (req: any, res) => {
     const { price, confirm } = req.body;
     const bookingId = req.params.id;
-    
-    // Calculate Platform Fee (Dynamic)
-    let platformFeePercent = 0;
+
+    const booking = db.prepare('SELECT service_type FROM bookings WHERE id = ?').get(bookingId);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    const range = getPriceRange(booking.service_type);
     const p = parseInt(price);
     
-    if (p < 250) {
-      platformFeePercent = 2.5;
-    } else if (p >= 250 && p <= 450) {
-      if (p === 280) platformFeePercent = 2.73;
-      else if (p >= 290 && p <= 299) platformFeePercent = 2.93;
-      else platformFeePercent = 3.0;
-    } else if (p > 450 && p <= 700) {
-      platformFeePercent = 5.0;
-    } else if (p > 700 && p <= 1000) {
-      platformFeePercent = 8.0;
-    } else if (p > 1000 && p <= 1500) {
-      platformFeePercent = 10.0;
-    } else {
-      platformFeePercent = 12.0;
+    if (p < range.min || p > range.max) {
+      return res.status(400).json({ error: `Price must be between ₹${range.min} and ₹${range.max}` });
     }
-
-    const platformFee = (p * platformFeePercent) / 100;
+    
+    const platformFee = calculatePlatformFee(p);
     const status = confirm ? 'confirmed' : 'negotiating';
 
     db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ?, status = ? WHERE id = ?').run(price, platformFee, status, bookingId);
     res.json({ success: true, platformFee, status });
+  });
+
+  app.post('/api/bookings/:id/payment', authenticate, (req: any, res) => {
+    const { payment_method, payment_status } = req.body;
+    db.prepare('UPDATE bookings SET payment_method = ?, payment_status = ? WHERE id = ?').run(payment_method, payment_status, req.params.id);
+    res.json({ success: true });
   });
 
   // Messages
@@ -308,8 +374,9 @@ async function startServer() {
       // Insert message as technician
       db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.user_id, content);
       
-      // Update proposed price
-      db.prepare('UPDATE bookings SET negotiated_price = ? WHERE id = ?').run(proposedPrice, bookingId);
+      // Update proposed price and platform fee
+      const platformFee = calculatePlatformFee(proposedPrice);
+      db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ? WHERE id = ?').run(proposedPrice, platformFee, bookingId);
     }
     
     res.json({ success: true });
@@ -351,7 +418,8 @@ async function startServer() {
     db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.tech_user_id, reply);
     
     // Update booking with the new "proposed" price from technician
-    db.prepare('UPDATE bookings SET negotiated_price = ? WHERE id = ?').run(finalPrice, bookingId);
+    const platformFee = calculatePlatformFee(finalPrice);
+    db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ? WHERE id = ?').run(finalPrice, platformFee, bookingId);
     
     res.json({ success: true, proposedPrice: finalPrice });
   });

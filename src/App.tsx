@@ -34,6 +34,7 @@ interface User {
   name: string;
   email: string;
   role: 'customer' | 'technician' | 'admin';
+  district?: string;
 }
 
 interface Technician {
@@ -111,6 +112,7 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
             <Link to="/book" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Book Technician</Link>
             <Link to="/register-tech" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Become Technician</Link>
             <Link to="/privacy" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Privacy Policy</Link>
+            <Link to="/about" onClick={() => setIsOpen(false)} className="block text-lg font-medium">About FixMate</Link>
             {user ? (
               <button onClick={() => { onLogout(); setIsOpen(false); }} className="w-full text-left text-red-500 font-medium">Logout</button>
             ) : (
@@ -142,6 +144,7 @@ const Footer = () => (
           <li><Link to="/book" className="hover:text-primary">Book a Service</Link></li>
           <li><Link to="/register-tech" className="hover:text-primary">Join as Technician</Link></li>
           <li><Link to="/privacy" className="hover:text-primary">Privacy Policy</Link></li>
+          <li><Link to="/about" className="hover:text-primary">About Us</Link></li>
         </ul>
       </div>
       <div>
@@ -227,6 +230,36 @@ const HomePage = () => {
                 <p className="text-slate-500 leading-relaxed">{f.desc}</p>
               </motion.div>
             ))}
+          </div>
+
+          {/* Customer Reviews */}
+          <div className="mt-20">
+            <h3 className="text-xl font-bold text-center mb-10 text-slate-400 uppercase tracking-widest">What Our Customers Say</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {[
+                { name: "Amit Singh", city: "Patna", review: "FixMate made it so easy to find an electrician. The bargaining feature is a game changer! I saved ₹200 on my AC repair.", rating: 5 },
+                { name: "Priya Kumari", city: "Purnia", review: "Very professional service. The technician arrived on time and was very skilled. Highly recommended for home services in Bihar.", rating: 5 },
+                { name: "Rajesh Kumar", city: "Darbhanga", review: "The AI cost predictor gave me a very accurate estimate. I felt confident negotiating with the technician. Great platform!", rating: 4 }
+              ].map((r, i) => (
+                <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                  <div className="flex gap-1 mb-4">
+                    {[...Array(r.rating)].map((_, i) => (
+                      <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    ))}
+                  </div>
+                  <p className="text-slate-600 italic mb-6">"{r.review}"</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                      {r.name[0]}
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900 text-sm">{r.name}</p>
+                      <p className="text-slate-400 text-xs">{r.city}, Bihar</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -342,13 +375,19 @@ const AICostPredictor = ({ defaultService, defaultDistrict }: { defaultService: 
 
 const BookingPage = ({ user }: { user: User | null }) => {
   const [techs, setTechs] = useState<Technician[]>([]);
-  const [district, setDistrict] = useState('');
+  const [district, setDistrict] = useState(user?.district || '');
   const [service, setService] = useState('');
   const navigate = useNavigate();
 
   const districts = ['Patna', 'Purnia', 'Darbhanga', 'Sitamarhi', 'Madhubani', 'Madhepura', 'Katihar', 'Saharsa', 'East Champaran', 'West Champaran', 'Begusarai', 'Barauni'];
   const coreServices = ['Electrician', 'Plumber', 'AC Repair', 'Carpenter', 'Painter'];
   const standardServices = ['Maid', 'Car Wash', 'Haircut'];
+
+  useEffect(() => {
+    if (user?.district && !district) {
+      setDistrict(user.district);
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchTechs();
@@ -440,12 +479,12 @@ const BookingPage = ({ user }: { user: User | null }) => {
                   </div>
                 </div>
                 <div className="flex items-center gap-4 text-sm text-slate-500 mb-6">
-                  <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {tech.district}</span>
-                  <span className="flex items-center gap-1"><ShieldCheck className="w-4 h-4" /> {tech.experience}y Exp</span>
+                  <span className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-lg"><MapPin className="w-3.5 h-3.5" /> {tech.district}</span>
+                  <span className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-lg"><ShieldCheck className="w-3.5 h-3.5" /> {tech.experience}y Exp</span>
                 </div>
                 <button 
                   onClick={() => handleBook(tech.id)}
-                  className="w-full btn-primary"
+                  className="w-full btn-primary py-3.5 shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all"
                 >
                   Book & Negotiate
                 </button>
@@ -458,6 +497,109 @@ const BookingPage = ({ user }: { user: User | null }) => {
   );
 };
 
+const CheckoutModal = ({ booking, onComplete, onClose }: { booking: any, onComplete: (method: 'online' | 'cod') => void, onClose: () => void }) => {
+  const [method, setMethod] = useState<'online' | 'cod' | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handlePayment = async () => {
+    if (!method) return;
+    setLoading(true);
+
+    if (method === 'online') {
+      if (!(window as any).Razorpay) {
+        alert("Razorpay SDK failed to load. Please check your internet connection.");
+        setLoading(false);
+        return;
+      }
+      const options = {
+        key: 'rzp_test_dummy', // Dummy key for demo
+        amount: Math.round((booking.negotiated_price + (booking.platform_fee || 0)) * 100),
+        currency: 'INR',
+        name: 'FixMate Bihar',
+        description: `Payment for ${booking.service_type}`,
+        handler: async () => {
+          await onComplete('online');
+        },
+        prefill: {
+          name: booking.customer_name,
+          email: 'customer@fixmate.in',
+          contact: '9142262449'
+        },
+        theme: { color: '#0F172A' }
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } else {
+      await onComplete('cod');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+      >
+        <div className="bg-primary p-6 text-white flex justify-between items-center">
+          <h3 className="text-xl font-bold">Booking Summary</h3>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X /></button>
+        </div>
+        
+        <div className="p-8 space-y-6">
+          <div className="space-y-4">
+            <div className="flex justify-between text-slate-600">
+              <span>Service Charge (Technician)</span>
+              <span className="font-bold text-slate-900">₹{booking.negotiated_price}</span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>App Development Fee</span>
+              <span className="font-bold text-slate-900">₹{booking.platform_fee?.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>Insurance (FixMate Cover)</span>
+              <span className="text-green-600 font-bold">FREE</span>
+            </div>
+            <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+              <span className="text-lg font-bold">Total Amount</span>
+              <span className="text-3xl font-black text-primary">₹{(booking.negotiated_price + (booking.platform_fee || 0)).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Select Payment Method</p>
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => setMethod('online')}
+                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${method === 'online' ? 'border-primary bg-primary/5' : 'border-slate-100 hover:border-slate-200'}`}
+              >
+                <div className="bg-primary/10 p-2 rounded-lg"><IndianRupee className="w-5 h-5 text-primary" /></div>
+                <span className="font-bold text-sm">Online Payment</span>
+              </button>
+              <button 
+                onClick={() => setMethod('cod')}
+                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${method === 'cod' ? 'border-primary bg-primary/5' : 'border-slate-100 hover:border-slate-200'}`}
+              >
+                <div className="bg-slate-100 p-2 rounded-lg"><Wrench className="w-5 h-5 text-slate-600" /></div>
+                <span className="font-bold text-sm">Cash on Delivery</span>
+              </button>
+            </div>
+          </div>
+
+          <button 
+            disabled={!method || loading}
+            onClick={handlePayment}
+            className="w-full btn-primary py-4 text-lg shadow-xl shadow-primary/20 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="animate-spin mx-auto" /> : (method === 'online' ? 'Pay & Confirm' : 'Confirm Booking')}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const NegotiatePage = ({ user }: { user: User | null }) => {
   const { id } = useParams();
   const [booking, setBooking] = useState<any>(null);
@@ -465,6 +607,7 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
   const [newMsg, setNewMsg] = useState('');
   const [attachment, setAttachment] = useState<{ url: string, type: 'image' | 'document', name: string } | null>(null);
   const [price, setPrice] = useState('');
+  const [showCheckout, setShowCheckout] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -580,24 +723,21 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
   };
 
   const confirmPrice = async () => {
-    const p = price || booking.negotiated_price;
+    const p = price || booking.negotiated_price || getPriceRange(booking.service_type).min.toString();
     if (!p) return;
-    const numericPrice = parseInt(p);
+    const numericPrice = parseInt(p.toString());
+    const range = getPriceRange(booking.service_type);
     
-    // Validation based on category
-    const coreServices = ['Electrician', 'Plumber', 'Carpenter', 'Painter'];
-    
-    if (booking.service_type === 'AC Repair') {
-      if (numericPrice < 1000 || numericPrice > 1500) return alert('Price for AC Repair must be between ₹1000 and ₹1500');
-    } else if (coreServices.includes(booking.service_type)) {
-      if (numericPrice < 500 || numericPrice > 1500) return alert('Price for Core services must be between ₹500 and ₹1500');
-    } else if (booking.service_type === 'Maid') {
-      if (numericPrice < 500 || numericPrice > 800) return alert('Price for Maid services must be between ₹500 and ₹800');
-    } else if (['Car Wash', 'Haircut'].includes(booking.service_type)) {
-      if (numericPrice < 100 || numericPrice > 250) return alert('Price for Standard services must be between ₹100 and ₹250');
+    if (numericPrice < range.min || numericPrice > range.max) {
+      return alert(`Price for ${booking.service_type} must be between ₹${range.min} and ₹${range.max}`);
     }
 
-    const isAccepting = !isTechnician && p === booking.negotiated_price;
+    const isAccepting = !isTechnician && booking.negotiated_price && numericPrice === parseInt(booking.negotiated_price);
+
+    if (isAccepting) {
+      setShowCheckout(true);
+      return;
+    }
 
     await fetch(`/api/bookings/${id}/negotiate`, {
       method: 'POST',
@@ -633,12 +773,50 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
     }
   };
 
+  const handlePaymentComplete = async (method: 'online' | 'cod') => {
+    await fetch(`/api/bookings/${id}/payment`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ 
+        payment_method: method,
+        payment_status: method === 'online' ? 'paid' : 'pending'
+      })
+    });
+
+    await fetch(`/api/bookings/${id}/negotiate`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ 
+        price: booking.negotiated_price,
+        confirm: true
+      })
+    });
+
+    alert(`Booking Confirmed via ${method.toUpperCase()}!`);
+    navigate('/book');
+  };
+
   if (!booking) return <div className="pt-24 text-center">Loading...</div>;
 
   const isTechnician = user?.role === 'technician';
 
   return (
     <div className="pt-24 pb-12 min-h-screen bg-slate-50">
+      <AnimatePresence>
+        {showCheckout && (
+          <CheckoutModal 
+            booking={booking} 
+            onClose={() => setShowCheckout(false)} 
+            onComplete={handlePaymentComplete} 
+          />
+        )}
+      </AnimatePresence>
       <div className="max-w-4xl mx-auto px-4">
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col h-[75vh]">
           {/* Header */}
@@ -706,46 +884,77 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
             ) : (
               <>
                 {/* Proposed Price / Counter Offer Box */}
-                {booking.negotiated_price && (
+                {(booking.negotiated_price || isTechnician) && (
                   <div className="mb-6 p-5 bg-slate-50 rounded-2xl border border-slate-200">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-                      <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Proposal</p>
-                        <p className="text-3xl font-black text-slate-900">₹{booking.negotiated_price}</p>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-6">
+                      <div className="flex items-center gap-4">
+                        <div className="bg-primary/10 p-3 rounded-2xl">
+                          <IndianRupee className="w-6 h-6 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            {booking.negotiated_price ? 'Current Proposal' : 'Initial Proposal'}
+                          </p>
+                          <p className="text-4xl font-black text-slate-900">
+                            ₹{booking.negotiated_price || getPriceRange(booking.service_type).min}
+                          </p>
+                        </div>
                       </div>
                       {!isTechnician ? (
-                        <button onClick={confirmPrice} className="btn-primary w-full sm:w-auto">Accept & Book</button>
+                        booking.negotiated_price ? (
+                          <button onClick={confirmPrice} className="btn-primary w-full sm:w-auto px-8 py-4 shadow-xl shadow-primary/20">
+                            Accept & Book Now
+                          </button>
+                        ) : (
+                          <div className="bg-slate-100 text-slate-500 px-4 py-2 rounded-xl text-sm italic">
+                            Waiting for technician's quote...
+                          </div>
+                        )
                       ) : (
-                        <span className="text-xs font-bold bg-primary/10 text-primary px-3 py-1 rounded-full">Waiting for Customer</span>
+                        booking.negotiated_price ? (
+                          <div className="flex items-center gap-2 bg-primary/5 text-primary px-4 py-2 rounded-xl border border-primary/10">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span className="text-xs font-bold uppercase tracking-wider">Waiting for Customer</span>
+                          </div>
+                        ) : (
+                          <div className="bg-secondary/10 text-secondary px-4 py-2 rounded-xl border border-secondary/10 text-xs font-bold uppercase">
+                            Set Your Price Below
+                          </div>
+                        )
                       )}
                     </div>
                     
-                    <div className="pt-4 border-t border-slate-200">
-                      <p className="text-xs font-bold text-slate-500 uppercase mb-3">
-                        {isTechnician ? 'Update Proposal' : 'Give Counter Offer'} 
-                        <span className="ml-2 text-slate-400 font-normal">
-                          (Range: ₹{getPriceRange(booking.service_type).min} - ₹{getPriceRange(booking.service_type).max})
-                        </span>
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-3 items-center">
+                    <div className="pt-6 border-t border-slate-200">
+                      <div className="flex justify-between items-end mb-4">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                            {isTechnician ? (booking.negotiated_price ? 'Update Your Proposal' : 'Propose Your Price') : 'Your Counter Offer'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Range: <span className="font-bold text-slate-700">₹{getPriceRange(booking.service_type).min} - ₹{getPriceRange(booking.service_type).max}</span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-3xl font-black text-primary">₹{price || booking.negotiated_price || getPriceRange(booking.service_type).min}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col gap-6">
                         <input 
                           type="range"
                           min={getPriceRange(booking.service_type).min}
                           max={getPriceRange(booking.service_type).max}
                           step="10"
-                          className="w-full sm:flex-1 accent-primary"
-                          value={price || booking.negotiated_price}
+                          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
+                          value={price || booking.negotiated_price || getPriceRange(booking.service_type).min}
                           onChange={(e) => setPrice(e.target.value)}
                         />
-                        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-                          <div className="w-16 text-center font-bold text-lg">₹{price || booking.negotiated_price}</div>
-                          <button 
-                            onClick={confirmPrice} 
-                            className="btn-secondary flex-1 sm:flex-none"
-                          >
-                            {isTechnician ? 'Update' : 'Counter'}
-                          </button>
-                        </div>
+                        <button 
+                          onClick={confirmPrice} 
+                          className="w-full btn-secondary py-3 font-bold uppercase tracking-widest text-xs"
+                        >
+                          {isTechnician ? (booking.negotiated_price ? 'Submit New Proposal' : 'Send Initial Quote') : 'Send Counter Offer'}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -897,6 +1106,46 @@ const AdminPanel = ({ user }: { user: User | null }) => {
   );
 };
 
+const AboutPage = () => (
+  <div className="pt-24 pb-12 min-h-screen bg-slate-50">
+    <div className="max-w-4xl mx-auto px-4 bg-white p-12 rounded-3xl shadow-sm">
+      <h1 className="text-3xl md:text-4xl font-bold mb-8 text-primary">About FixMate</h1>
+      <div className="prose prose-slate max-w-none space-y-8">
+        <section>
+          <h2 className="text-2xl font-bold mb-4">Empowering Bihar's Service Economy</h2>
+          <p className="text-lg leading-relaxed text-slate-600">
+            FixMate is Bihar's first smart technician booking platform, designed to bridge the gap between skilled local technicians and households. 
+            We believe in transparency, fair bargaining, and the power of local communities.
+          </p>
+        </section>
+
+        <div className="grid md:grid-cols-2 gap-8">
+          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+            <h3 className="text-xl font-bold mb-3 flex items-center gap-2">
+              <ShieldCheck className="text-primary w-5 h-5" /> Verified Professionals
+            </h3>
+            <p className="text-slate-600">Every technician on our platform undergoes a strict verification process, including ID proof and skill assessment.</p>
+          </div>
+          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+            <h3 className="text-xl font-bold mb-3 flex items-center gap-2">
+              <IndianRupee className="text-primary w-5 h-5" /> Fair Bargaining
+            </h3>
+            <p className="text-slate-600">Our unique negotiation chat allows customers and technicians to reach a mutually beneficial price before the work starts.</p>
+          </div>
+        </div>
+
+        <section className="bg-primary/5 p-8 rounded-3xl border border-primary/10">
+          <h2 className="text-2xl font-bold mb-4">Our Vision</h2>
+          <p className="text-slate-700 italic">
+            "To create a digital ecosystem where every skilled hand in Bihar finds work, and every household finds a trusted mate for their repairs."
+          </p>
+          <p className="mt-4 font-bold text-primary">— Anand Amrit Raj, Founder</p>
+        </section>
+      </div>
+    </div>
+  </div>
+);
+
 const PrivacyPolicy = () => (
   <div className="pt-24 pb-12 min-h-screen bg-slate-50">
     <div className="max-w-4xl mx-auto px-4 bg-white p-12 rounded-3xl shadow-sm">
@@ -934,13 +1183,21 @@ const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: Us
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
+  const [district, setDistrict] = useState('');
+  const [idNumber, setIdNumber] = useState('');
   const [role, setRole] = useState<'customer' | 'technician'>('customer');
   const navigate = useNavigate();
+
+  const districts = ['Patna', 'Purnia', 'Darbhanga', 'Sitamarhi', 'Madhubani', 'Madhepura', 'Katihar', 'Saharsa', 'East Champaran', 'West Champaran', 'Begusarai', 'Barauni'];
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const endpoint = type === 'login' ? '/api/auth/login' : '/api/auth/signup';
-    const body = type === 'login' ? { email, password } : { name, email, password, role };
+    const body = type === 'login' 
+      ? { email, password } 
+      : { name, email, password, role, phone, location, district, id_number: idNumber };
     
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -961,10 +1218,10 @@ const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: Us
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md"
+        className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md my-12"
       >
         <h2 className="text-3xl font-bold mb-8 text-center">{type === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {type === 'signup' && (
             <>
               <input 
@@ -972,18 +1229,45 @@ const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: Us
                 className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-primary"
                 value={name} onChange={e => setName(e.target.value)}
               />
-          <div className="flex gap-4">
-            <button 
-              type="button"
-              onClick={() => setRole('customer')}
-              className={`flex-1 btn-primary ${role === 'customer' ? '' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-            >Customer</button>
-            <button 
-              type="button"
-              onClick={() => setRole('technician')}
-              className={`flex-1 btn-secondary ${role === 'technician' ? '' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-            >Technician</button>
-          </div>
+              <input 
+                type="tel" placeholder="Mobile Number (Mandatory)" required
+                className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-primary"
+                value={phone} onChange={e => setPhone(e.target.value)}
+              />
+              <input 
+                type="text" placeholder="Permanent Address" required
+                className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-primary"
+                value={location} onChange={e => setLocation(e.target.value)}
+              />
+              <select 
+                required
+                className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-primary"
+                value={district} onChange={e => setDistrict(e.target.value)}
+              >
+                <option value="">Select Your District</option>
+                {districts.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+
+              <div className="flex gap-4">
+                <button 
+                  type="button"
+                  onClick={() => setRole('customer')}
+                  className={`flex-1 py-2 rounded-xl font-bold transition-all ${role === 'customer' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}
+                >Customer</button>
+                <button 
+                  type="button"
+                  onClick={() => setRole('technician')}
+                  className={`flex-1 py-2 rounded-xl font-bold transition-all ${role === 'technician' ? 'bg-secondary text-white' : 'bg-slate-100 text-slate-500'}`}
+                >Technician</button>
+              </div>
+
+              {role === 'technician' && (
+                <input 
+                  type="text" placeholder="Aadhar Card Number (Mandatory)" required
+                  className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
+                  value={idNumber} onChange={e => setIdNumber(e.target.value)}
+                />
+              )}
             </>
           )}
           <input 
@@ -996,7 +1280,7 @@ const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: Us
             className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-primary"
             value={password} onChange={e => setPassword(e.target.value)}
           />
-          <button type="submit" className="w-full btn-primary">
+          <button type="submit" className="w-full btn-primary py-3 mt-4">
             {type === 'login' ? 'Login' : 'Sign Up'}
           </button>
         </form>
@@ -1044,6 +1328,7 @@ export default function App() {
             <Route path="/negotiate/:id" element={<NegotiatePage user={user} />} />
             <Route path="/admin" element={<AdminPanel user={user} />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="/login" element={<AuthPage type="login" onLogin={handleLogin} />} />
             <Route path="/signup" element={<AuthPage type="signup" onLogin={handleLogin} />} />
             <Route path="/register-tech" element={<AuthPage type="signup" onLogin={handleLogin} />} />
