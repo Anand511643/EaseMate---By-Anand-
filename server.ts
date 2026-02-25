@@ -11,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const db = new Database('fixmate.db');
+db.pragma('foreign_keys = ON');
 const JWT_SECRET = process.env.JWT_SECRET || 'fixmate-super-secret-key-2024';
 
 // Initialize Database
@@ -169,17 +170,18 @@ districts.forEach(district => {
 });
 
 const getPriceRange = (serviceType: string) => {
-  if (serviceType === 'AC Repair') return { min: 1000, max: 1500 };
-  if (['Electrician', 'Plumber', 'Carpenter', 'Painter'].includes(serviceType)) return { min: 500, max: 1500 };
-  if (serviceType === 'Maid') return { min: 500, max: 800 };
-  if (['Car Wash', 'Haircut'].includes(serviceType)) return { min: 100, max: 250 };
+  const coreServices = ['Electrician', 'Plumber', 'AC Repair', 'Carpenter', 'Painter'];
+  const standardServices = ['Maid', 'Car Wash', 'Haircut'];
+  
+  if (coreServices.includes(serviceType)) return { min: 500, max: 1500 };
+  if (standardServices.includes(serviceType)) return { min: 100, max: 250 };
   return { min: 100, max: 2000 };
 };
 
 const calculatePlatformFee = (price: number) => {
   let platformFeePercent = 0;
   if (price < 250) {
-    platformFeePercent = 2.5;
+    platformFeePercent = 2.5; // Default for low prices
   } else if (price >= 250 && price <= 450) {
     if (price === 280) platformFeePercent = 2.73;
     else if (price >= 290 && price <= 299) platformFeePercent = 2.93;
@@ -201,28 +203,22 @@ async function startServer() {
   const PORT = 3000;
 
   // Ensure bookings table has payment columns
-  try {
-    db.prepare('ALTER TABLE bookings ADD COLUMN payment_method TEXT').run();
-    db.prepare('ALTER TABLE bookings ADD COLUMN payment_status TEXT DEFAULT "pending"').run();
-  } catch (e) {}
+  const migrations = [
+    'ALTER TABLE bookings ADD COLUMN payment_method TEXT',
+    'ALTER TABLE bookings ADD COLUMN payment_status TEXT DEFAULT "pending"',
+    'ALTER TABLE users ADD COLUMN district TEXT',
+    'ALTER TABLE technicians ADD COLUMN id_number TEXT',
+    'ALTER TABLE messages ADD COLUMN attachment_url TEXT',
+    'ALTER TABLE messages ADD COLUMN attachment_type TEXT'
+  ];
 
-  // Ensure users table has district column
-  try {
-    db.prepare('ALTER TABLE users ADD COLUMN district TEXT').run();
-  } catch (e) {}
-  
-  // Ensure technicians table has id_number column
-  try {
-    db.prepare('ALTER TABLE technicians ADD COLUMN id_number TEXT').run();
-  } catch (e) {}
-
-  // Ensure messages table has attachment columns (migration)
-  try {
-    db.prepare('ALTER TABLE messages ADD COLUMN attachment_url TEXT').run();
-    db.prepare('ALTER TABLE messages ADD COLUMN attachment_type TEXT').run();
-  } catch (e) {
-    // Columns probably already exist
-  }
+  migrations.forEach(m => {
+    try {
+      db.prepare(m).run();
+    } catch (e) {
+      // Column likely exists
+    }
+  });
 
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
@@ -230,13 +226,27 @@ async function startServer() {
 
   // --- Auth Middleware ---
   const authenticate = (req: any, res: any, next: any) => {
-    const token = req.headers.authorization?.split(' ')[1];
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+    
+    const token = authHeader.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
     try {
-      req.user = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      if (!decoded || !decoded.id) {
+        return res.status(401).json({ error: 'Invalid token payload' });
+      }
+
+      const user = db.prepare('SELECT id FROM users WHERE id = ?').get(decoded.id);
+      if (!user) {
+        return res.status(401).json({ error: 'User session expired. Please login again.' });
+      }
+      req.user = decoded;
       next();
     } catch (err) {
-      res.status(401).json({ error: 'Invalid token' });
+      console.error('Auth Error:', err);
+      res.status(401).json({ error: 'Invalid or expired token' });
     }
   };
 
@@ -265,8 +275,9 @@ async function startServer() {
         );
       }
 
-      const token = jwt.sign({ id: result.lastInsertRowid, role, email }, JWT_SECRET);
-      res.json({ token, user: { id: result.lastInsertRowid, name, email, role, district } });
+      const userId = Number(result.lastInsertRowid);
+      const token = jwt.sign({ id: userId, role, email }, JWT_SECRET);
+      res.json({ token, user: { id: userId, name, email, role, district } });
     } catch (err: any) {
       console.error(err);
       res.status(400).json({ error: 'Email already exists or invalid data' });
@@ -274,32 +285,57 @@ async function startServer() {
   });
 
   app.post('/api/auth/login', (req, res) => {
-    const { email, password } = req.body;
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    try {
+      const { email, password } = req.body;
+      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      if (!user || !bcrypt.compareSync(password, user.password)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET);
+      res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, district: user.district } });
+    } catch (err) {
+      console.error('Login Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
-    const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET);
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, district: user.district } });
   });
 
   // Technicians
   app.get('/api/technicians', (req, res) => {
-    const { district, service } = req.query;
-    let query = 'SELECT users.name, users.phone, technicians.* FROM users JOIN technicians ON users.id = technicians.user_id WHERE technicians.is_verified = 1';
-    const params: any[] = [];
+    try {
+      const { district, service } = req.query;
+      let query = `
+        SELECT 
+          t.id, 
+          t.user_id, 
+          u.name, 
+          u.phone, 
+          t.skills, 
+          t.experience, 
+          t.district, 
+          t.base_charge, 
+          t.bio, 
+          t.rating
+        FROM technicians t
+        JOIN users u ON t.user_id = u.id 
+        WHERE t.is_verified = 1
+      `;
+      const params: any[] = [];
 
-    if (district) {
-      query += ' AND technicians.district = ?';
-      params.push(district);
-    }
-    if (service) {
-      query += ' AND technicians.skills LIKE ?';
-      params.push(`%${service}%`);
-    }
+      if (district) {
+        query += ' AND t.district = ?';
+        params.push(district);
+      }
+      if (service) {
+        query += ' AND t.skills LIKE ?';
+        params.push(`%${service}%`);
+      }
 
-    const techs = db.prepare(query).all(...params);
-    res.json(techs);
+      const techs = db.prepare(query).all(...params);
+      res.json(techs);
+    } catch (err) {
+      console.error('Fetch Technicians Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   // Bookings & Bargaining
@@ -307,121 +343,206 @@ async function startServer() {
     const { technician_id, service_type } = req.body;
     const customer_id = req.user.id;
 
-    const result = db.prepare('INSERT INTO bookings (customer_id, technician_id, service_type, status) VALUES (?, ?, ?, ?)').run(customer_id, technician_id, service_type, 'negotiating');
-    res.json({ booking_id: result.lastInsertRowid });
+    try {
+      if (!technician_id) {
+        return res.status(400).json({ error: 'Technician ID is required' });
+      }
+
+      const tech = db.prepare('SELECT id, user_id, base_charge FROM technicians WHERE id = ?').get(technician_id);
+      if (!tech) {
+        return res.status(404).json({ error: 'Technician not found' });
+      }
+
+      if (tech.user_id === customer_id) {
+        return res.status(400).json({ error: 'You cannot book yourself' });
+      }
+
+      const platformFee = calculatePlatformFee(tech.base_charge);
+      const result = db.prepare('INSERT INTO bookings (customer_id, technician_id, service_type, status, negotiated_price, platform_fee) VALUES (?, ?, ?, ?, ?, ?)').run(
+        customer_id, 
+        technician_id, 
+        service_type || 'General', 
+        'negotiating',
+        tech.base_charge,
+        platformFee
+      );
+
+      const bookingId = Number(result.lastInsertRowid);
+      
+      // Initial message from technician
+      const initialMessage = `Hello! I see you need ${service_type || 'General'} service. My standard charge for this is ₹${tech.base_charge}. We can discuss the details here. What exactly is the issue?`;
+      db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, tech.user_id, initialMessage);
+      
+      res.json({ booking_id: bookingId });
+    } catch (err: any) {
+      console.error('Booking Error:', err);
+      res.status(500).json({ error: 'Failed to create booking. Please try again.' });
+    }
   });
 
-  app.get('/api/bookings/:id', authenticate, (req, res) => {
-    const booking = db.prepare(`
-      SELECT b.*, u.name as customer_name, t_u.name as technician_name, t.district
-      FROM bookings b
-      JOIN users u ON b.customer_id = u.id
-      JOIN technicians t ON b.technician_id = t.id
-      JOIN users t_u ON t.user_id = t_u.id
-      WHERE b.id = ?
-    `).get(req.params.id);
-    res.json(booking);
+  app.get('/api/bookings/:id', authenticate, (req: any, res) => {
+    try {
+      const booking = db.prepare(`
+        SELECT 
+          b.*, 
+          u.name as customer_name, 
+          t_u.name as technician_name, 
+          t.district,
+          t.user_id as tech_user_id
+        FROM bookings b
+        JOIN users u ON b.customer_id = u.id
+        JOIN technicians t ON b.technician_id = t.id
+        JOIN users t_u ON t.user_id = t_u.id
+        WHERE b.id = ?
+      `).get(req.params.id);
+
+      if (!booking) {
+        return res.status(404).json({ error: 'Booking not found' });
+      }
+
+      // Security check: only customer or technician can view
+      if (booking.customer_id !== req.user.id && booking.tech_user_id !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      res.json(booking);
+    } catch (err) {
+      console.error('Fetch Booking Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   app.post('/api/bookings/:id/negotiate', authenticate, (req: any, res) => {
-    const { price, confirm } = req.body;
-    const bookingId = req.params.id;
+    try {
+      const { price, confirm } = req.body;
+      const bookingId = req.params.id;
 
-    const booking = db.prepare('SELECT service_type FROM bookings WHERE id = ?').get(bookingId);
-    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      const booking = db.prepare('SELECT service_type FROM bookings WHERE id = ?').get(bookingId);
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-    const range = getPriceRange(booking.service_type);
-    const p = parseInt(price);
-    
-    if (p < range.min || p > range.max) {
-      return res.status(400).json({ error: `Price must be between ₹${range.min} and ₹${range.max}` });
+      const range = getPriceRange(booking.service_type);
+      const p = parseInt(price);
+      
+      if (p < range.min || p > range.max) {
+        return res.status(400).json({ error: `Price must be between ₹${range.min} and ₹${range.max}` });
+      }
+      
+      const platformFee = calculatePlatformFee(p);
+      const status = confirm ? 'confirmed' : 'negotiating';
+
+      db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ?, status = ? WHERE id = ?').run(price, platformFee, status, bookingId);
+      res.json({ success: true, platformFee, status });
+    } catch (err) {
+      console.error('Negotiate Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
-    
-    const platformFee = calculatePlatformFee(p);
-    const status = confirm ? 'confirmed' : 'negotiating';
-
-    db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ?, status = ? WHERE id = ?').run(price, platformFee, status, bookingId);
-    res.json({ success: true, platformFee, status });
   });
 
   app.post('/api/bookings/:id/payment', authenticate, (req: any, res) => {
-    const { payment_method, payment_status } = req.body;
-    db.prepare('UPDATE bookings SET payment_method = ?, payment_status = ? WHERE id = ?').run(payment_method, payment_status, req.params.id);
-    res.json({ success: true });
+    try {
+      const { payment_method, payment_status } = req.body;
+      db.prepare('UPDATE bookings SET payment_method = ?, payment_status = ? WHERE id = ?').run(payment_method, payment_status, req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Payment Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   // Messages
   app.get('/api/bookings/:id/messages', authenticate, (req, res) => {
-    const messages = db.prepare('SELECT m.*, u.name as sender_name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.booking_id = ? ORDER BY m.created_at ASC').all(req.params.id);
-    res.json(messages);
+    try {
+      const messages = db.prepare('SELECT m.*, u.name as sender_name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.booking_id = ? ORDER BY m.created_at ASC').all(req.params.id);
+      res.json(messages);
+    } catch (err) {
+      console.error('Fetch Messages Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   app.post('/api/bookings/:id/messages', authenticate, (req: any, res) => {
-    const { content, attachment_url, attachment_type } = req.body;
-    const sender_id = req.user.id;
-    db.prepare('INSERT INTO messages (booking_id, sender_id, content, attachment_url, attachment_type) VALUES (?, ?, ?, ?, ?)').run(req.params.id, sender_id, content, attachment_url, attachment_type);
-    res.json({ success: true });
+    try {
+      const { content, attachment_url, attachment_type } = req.body;
+      const sender_id = req.user.id;
+      db.prepare('INSERT INTO messages (booking_id, sender_id, content, attachment_url, attachment_type) VALUES (?, ?, ?, ?, ?)').run(req.params.id, sender_id, content, attachment_url, attachment_type);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Send Message Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   app.post('/api/bookings/:id/messages/auto', authenticate, (req: any, res) => {
-    const { content, proposedPrice } = req.body;
-    const bookingId = req.params.id;
-    
-    // Get technician user ID for this booking
-    const booking = db.prepare('SELECT technicians.user_id FROM bookings JOIN technicians ON bookings.technician_id = technicians.id WHERE bookings.id = ?').get(bookingId);
-    
-    if (booking) {
-      // Insert message as technician
-      db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.user_id, content);
+    try {
+      const { content, proposedPrice } = req.body;
+      const bookingId = req.params.id;
       
-      // Update proposed price and platform fee
-      const platformFee = calculatePlatformFee(proposedPrice);
-      db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ? WHERE id = ?').run(proposedPrice, platformFee, bookingId);
+      // Get technician user ID for this booking
+      const booking = db.prepare('SELECT technicians.user_id FROM bookings JOIN technicians ON bookings.technician_id = technicians.id WHERE bookings.id = ?').get(bookingId);
+      
+      if (booking) {
+        // Insert message as technician
+        db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.user_id, content);
+        
+        // Update proposed price and platform fee
+        const platformFee = calculatePlatformFee(proposedPrice);
+        db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ? WHERE id = ?').run(proposedPrice, platformFee, bookingId);
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Auto Message Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
-    
-    res.json({ success: true });
   });
 
   app.post('/api/bookings/:id/messages/counter-reply', authenticate, (req: any, res) => {
-    const { counterPrice } = req.body;
-    const bookingId = req.params.id;
-    
-    const booking = db.prepare(`
-      SELECT b.*, t.user_id as tech_user_id, t.district, t.skills
-      FROM bookings b
-      JOIN technicians t ON b.technician_id = t.id
-      WHERE b.id = ?
-    `).get(bookingId);
-    
-    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    try {
+      const { counterPrice } = req.body;
+      const bookingId = req.params.id;
+      
+      const booking = db.prepare(`
+        SELECT b.*, t.user_id as tech_user_id, t.district, t.skills
+        FROM bookings b
+        JOIN technicians t ON b.technician_id = t.id
+        WHERE b.id = ?
+      `).get(bookingId);
+      
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-    const currentPrice = booking.negotiated_price;
-    let reply = '';
-    let finalPrice = currentPrice;
-    let status = 'negotiating';
+      const currentPrice = booking.negotiated_price;
+      let reply = '';
+      let finalPrice = currentPrice;
 
-    // Simple logic: If counter is within 15% of current price, or if it's the second counter, maybe agree.
-    const diff = currentPrice - counterPrice;
-    const percentDiff = (diff / currentPrice) * 100;
+      // Simple logic: If counter is within 15% of current price, or if it's the second counter, maybe agree.
+      const diff = currentPrice - counterPrice;
+      const percentDiff = (diff / currentPrice) * 100;
 
-    if (percentDiff <= 15) {
-      reply = `Alright, I agree to ₹${counterPrice}. It's a fair price for the work. You can proceed to confirm the booking now.`;
-      finalPrice = counterPrice;
-      // We don't set status to confirmed yet, customer must click "Accept"
-    } else {
-      const middleGround = Math.floor((currentPrice + counterPrice) / 2);
-      reply = `₹${counterPrice} is a bit low considering the effort and travel to ${booking.district}. How about we settle at ₹${middleGround}? This is my best offer.`;
-      finalPrice = middleGround;
+      if (percentDiff <= 15) {
+        reply = `Alright, I agree to ₹${counterPrice}. It's a fair price for the work. You can proceed to confirm the booking now.`;
+        finalPrice = counterPrice;
+      } else {
+        const middleGround = Math.floor((currentPrice + counterPrice) / 2);
+        reply = `₹${counterPrice} is a bit low considering the effort and travel to ${booking.district}. How about we settle at ₹${middleGround}? This is my best offer.`;
+        finalPrice = middleGround;
+      }
+
+      const range = getPriceRange(booking.service_type);
+      if (finalPrice < range.min) finalPrice = range.min;
+      if (finalPrice > range.max) finalPrice = range.max;
+
+      // Insert message as technician
+      db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.tech_user_id, reply);
+      
+      // Update proposed price and platform fee
+      const platformFee = calculatePlatformFee(finalPrice);
+      db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ? WHERE id = ?').run(finalPrice, platformFee, bookingId);
+      
+      res.json({ success: true, proposedPrice: finalPrice });
+    } catch (err) {
+      console.error('Counter Reply Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
-
-    // Insert message as technician
-    db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.tech_user_id, reply);
-    
-    // Update booking with the new "proposed" price from technician
-    const platformFee = calculatePlatformFee(finalPrice);
-    db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ? WHERE id = ?').run(finalPrice, platformFee, bookingId);
-    
-    res.json({ success: true, proposedPrice: finalPrice });
   });
 
   // Admin

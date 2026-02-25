@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
 import { 
   Wrench, 
@@ -39,6 +39,7 @@ interface User {
 
 interface Technician {
   id: number;
+  user_id: number;
   name: string;
   skills: string;
   experience: number;
@@ -82,7 +83,7 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
                     <LayoutDashboard className="w-5 h-5" />
                   </Link>
                 )}
-                <span className="text-sm font-semibold text-slate-700">Hi, {user.name.split(' ')[0]}</span>
+                <span className="text-sm font-semibold text-slate-700">Hi, {user.name?.split(' ')[0] || 'User'}</span>
                 <button onClick={onLogout} className="p-2 hover:bg-red-50 rounded-full text-red-500">
                   <LogOut className="w-5 h-5" />
                 </button>
@@ -377,6 +378,7 @@ const BookingPage = ({ user }: { user: User | null }) => {
   const [techs, setTechs] = useState<Technician[]>([]);
   const [district, setDistrict] = useState(user?.district || '');
   const [service, setService] = useState('');
+  const [bookingLoading, setBookingLoading] = useState<number | null>(null);
   const navigate = useNavigate();
 
   const districts = ['Patna', 'Purnia', 'Darbhanga', 'Sitamarhi', 'Madhubani', 'Madhepura', 'Katihar', 'Saharsa', 'East Champaran', 'West Champaran', 'Begusarai', 'Barauni'];
@@ -401,16 +403,40 @@ const BookingPage = ({ user }: { user: User | null }) => {
 
   const handleBook = async (techId: number) => {
     if (!user) return navigate('/login');
-    const res = await fetch('/api/bookings', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({ technician_id: techId, service_type: service || 'General' })
-    });
-    const data = await res.json();
-    navigate(`/negotiate/${data.booking_id}`);
+    
+    // Check if user is booking themselves
+    const tech = techs.find(t => t.id === techId);
+    if (tech && tech.user_id === user.id) {
+      alert("You cannot book your own service profile.");
+      return;
+    }
+
+    setBookingLoading(techId);
+    try {
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ technician_id: techId, service_type: service || 'General' })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create booking');
+      }
+
+      if (data.booking_id) {
+        navigate(`/negotiate/${data.booking_id}`);
+      } else {
+        throw new Error('No booking ID returned');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setBookingLoading(null);
+    }
   };
 
   return (
@@ -483,10 +509,11 @@ const BookingPage = ({ user }: { user: User | null }) => {
                   <span className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-lg"><ShieldCheck className="w-3.5 h-3.5" /> {tech.experience}y Exp</span>
                 </div>
                 <button 
+                  disabled={bookingLoading === tech.id}
                   onClick={() => handleBook(tech.id)}
-                  className="w-full btn-primary py-3.5 shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all"
+                  className="w-full btn-primary py-3.5 shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all disabled:opacity-50"
                 >
-                  Book & Negotiate
+                  {bookingLoading === tech.id ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Book & Negotiate'}
                 </button>
               </div>
             </motion.div>
@@ -536,64 +563,110 @@ const CheckoutModal = ({ booking, onComplete, onClose }: { booking: any, onCompl
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.95 }}
+        className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden border border-slate-100"
       >
-        <div className="bg-primary p-6 text-white flex justify-between items-center">
-          <h3 className="text-xl font-bold">Booking Summary</h3>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X /></button>
+        <div className="bg-slate-900 p-8 text-white relative">
+          <button 
+            onClick={onClose} 
+            className="absolute right-6 top-6 p-2.5 hover:bg-white/10 rounded-full transition-all duration-300"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-4 mb-2">
+            <div className="bg-primary/20 p-2 rounded-xl">
+              <Sparkles className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="text-2xl font-bold tracking-tight">Secure Checkout</h3>
+          </div>
+          <p className="text-slate-400 text-sm">Finalize your booking with FixMate Bihar</p>
         </div>
         
-        <div className="p-8 space-y-6">
-          <div className="space-y-4">
-            <div className="flex justify-between text-slate-600">
-              <span>Service Charge (Technician)</span>
+        <div className="p-8 space-y-8">
+          <div className="bg-slate-50 rounded-3xl p-6 space-y-4 border border-slate-100">
+            <div className="flex justify-between items-center text-slate-600">
+              <span className="text-sm font-medium">Negotiated Service Charge</span>
               <span className="font-bold text-slate-900">₹{booking.negotiated_price}</span>
             </div>
-            <div className="flex justify-between text-slate-600">
-              <span>App Development Fee</span>
-              <span className="font-bold text-slate-900">₹{booking.platform_fee?.toFixed(2)}</span>
+            <div className="flex justify-between items-center text-blue-600 bg-blue-50/50 px-3 py-2 rounded-xl border border-blue-100/50">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" />
+                <span className="text-xs font-semibold">Platform Fee (Deducted from Tech)</span>
+              </div>
+              <span className="text-xs font-bold">-₹{booking.platform_fee?.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-slate-600">
-              <span>Insurance (FixMate Cover)</span>
-              <span className="text-green-600 font-bold">FREE</span>
+            <div className="flex justify-between items-center text-slate-600">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">FixMate Insurance</span>
+                <span className="bg-green-100 text-green-700 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">Covered</span>
+              </div>
+              <span className="text-green-600 font-bold">₹0.00</span>
             </div>
-            <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
-              <span className="text-lg font-bold">Total Amount</span>
-              <span className="text-3xl font-black text-primary">₹{(booking.negotiated_price + (booking.platform_fee || 0)).toFixed(2)}</span>
+            <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
+              <span className="text-lg font-bold text-slate-900">Total Payable by You</span>
+              <div className="text-right">
+                <span className="text-3xl font-black text-primary block leading-none">₹{booking.negotiated_price}</span>
+                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">No extra charges for you</span>
+              </div>
             </div>
           </div>
 
           <div className="space-y-4">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Select Payment Method</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Payment Method</p>
+              <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase">
+                <ShieldCheck className="w-3 h-3" /> SSL Secured
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button 
                 onClick={() => setMethod('online')}
-                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${method === 'online' ? 'border-primary bg-primary/5' : 'border-slate-100 hover:border-slate-200'}`}
+                className={`group p-5 rounded-3xl border-2 transition-all duration-300 flex items-center gap-4 ${method === 'online' ? 'border-primary bg-primary/5 ring-4 ring-primary/10' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'}`}
               >
-                <div className="bg-primary/10 p-2 rounded-lg"><IndianRupee className="w-5 h-5 text-primary" /></div>
-                <span className="font-bold text-sm">Online Payment</span>
+                <div className={`p-3 rounded-2xl transition-colors duration-300 ${method === 'online' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-400 group-hover:text-slate-600'}`}>
+                  <IndianRupee className="w-6 h-6" />
+                </div>
+                <div className="text-left">
+                  <span className="font-bold text-slate-900 block">Online</span>
+                  <span className="text-[10px] text-slate-400 font-medium uppercase">UPI, Cards, Net</span>
+                </div>
               </button>
               <button 
                 onClick={() => setMethod('cod')}
-                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${method === 'cod' ? 'border-primary bg-primary/5' : 'border-slate-100 hover:border-slate-200'}`}
+                className={`group p-5 rounded-3xl border-2 transition-all duration-300 flex items-center gap-4 ${method === 'cod' ? 'border-primary bg-primary/5 ring-4 ring-primary/10' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'}`}
               >
-                <div className="bg-slate-100 p-2 rounded-lg"><Wrench className="w-5 h-5 text-slate-600" /></div>
-                <span className="font-bold text-sm">Cash on Delivery</span>
+                <div className={`p-3 rounded-2xl transition-colors duration-300 ${method === 'cod' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-400 group-hover:text-slate-600'}`}>
+                  <Wrench className="w-6 h-6" />
+                </div>
+                <div className="text-left">
+                  <span className="font-bold text-slate-900 block">COD</span>
+                  <span className="text-[10px] text-slate-400 font-medium uppercase">Pay after service</span>
+                </div>
               </button>
             </div>
           </div>
 
-          <button 
-            disabled={!method || loading}
-            onClick={handlePayment}
-            className="w-full btn-primary py-4 text-lg shadow-xl shadow-primary/20 disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="animate-spin mx-auto" /> : (method === 'online' ? 'Pay & Confirm' : 'Confirm Booking')}
-          </button>
+          <div className="space-y-4">
+            <button 
+              disabled={!method || loading}
+              onClick={handlePayment}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-5 rounded-3xl text-lg font-bold shadow-2xl shadow-slate-900/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+            >
+              {loading ? <Loader2 className="animate-spin w-6 h-6" /> : (
+                <>
+                  <span>{method === 'online' ? 'Pay & Confirm Booking' : 'Confirm Booking'}</span>
+                  <ArrowRight className="w-5 h-5" />
+                </>
+              )}
+            </button>
+            <p className="text-center text-[10px] text-slate-400 font-medium">
+              By clicking confirm, you agree to our <Link to="/privacy" className="underline hover:text-primary">Terms of Service</Link>
+            </p>
+          </div>
         </div>
       </motion.div>
     </div>
@@ -608,13 +681,19 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
   const [attachment, setAttachment] = useState<{ url: string, type: 'image' | 'document', name: string } | null>(null);
   const [price, setPrice] = useState('');
   const [showCheckout, setShowCheckout] = useState(false);
+  const [showNegotiation, setShowNegotiation] = useState(false);
   const navigate = useNavigate();
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!user && !localStorage.getItem('user')) {
+      navigate('/login');
+      return;
+    }
     fetchBooking();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [id, user]);
 
   useEffect(() => {
     if (booking?.negotiated_price && !price) {
@@ -622,27 +701,54 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
     }
   }, [booking]);
 
+  const [prevMessageCount, setPrevMessageCount] = useState(0);
+
+  useEffect(() => {
+    if (messages.length > prevMessageCount) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setPrevMessageCount(messages.length);
+    }
+  }, [messages, prevMessageCount]);
+
   const fetchBooking = async () => {
-    const res = await fetch(`/api/bookings/${id}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setBooking(data);
+    try {
+      const res = await fetch(`/api/bookings/${id}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.status === 401) {
+        navigate('/login');
+        return;
+      }
+      const data = await res.json();
+      if (data && data.id) {
+        setBooking(data);
+      }
+    } catch (err) {
+      console.error('Fetch Booking Error:', err);
+    }
   };
 
   const fetchMessages = async () => {
-    const res = await fetch(`/api/bookings/${id}/messages`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setMessages(data);
+    try {
+      const res = await fetch(`/api/bookings/${id}/messages`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setMessages(data);
+      }
+    } catch (err) {
+      console.error('Fetch Messages Error:', err);
+    }
   };
 
   const getPriceRange = (serviceType: string) => {
-    if (serviceType === 'AC Repair') return { min: 1000, max: 1500 };
-    if (['Electrician', 'Plumber', 'Carpenter', 'Painter'].includes(serviceType)) return { min: 500, max: 1500 };
-    if (serviceType === 'Maid') return { min: 500, max: 800 };
-    if (['Car Wash', 'Haircut'].includes(serviceType)) return { min: 100, max: 250 };
+    const coreServices = ['Electrician', 'Plumber', 'AC Repair', 'Carpenter', 'Painter'];
+    const standardServices = ['Maid', 'Car Wash', 'Haircut'];
+    
+    if (coreServices.includes(serviceType)) return { min: 500, max: 1500 };
+    if (standardServices.includes(serviceType)) return { min: 100, max: 250 };
     return { min: 100, max: 2000 };
   };
 
@@ -703,8 +809,6 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
 
       const autoReply = `I've analyzed your request. Based on market rates in ${booking.district}, I will charge ₹${suggestedPrice} for this work. This includes labor and basic materials. ${prediction.explanation}`;
       
-      // Send automated message from technician (using a special system-like call or just pretending)
-      // For this demo, we'll have the server handle "system" messages or just post as technician
       await fetch(`/api/bookings/${id}/messages/auto`, {
         method: 'POST',
         headers: { 
@@ -722,8 +826,8 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
     }
   };
 
-  const confirmPrice = async () => {
-    const p = price || booking.negotiated_price || getPriceRange(booking.service_type).min.toString();
+  const confirmPrice = async (forceAccept = false) => {
+    const p = forceAccept ? booking.negotiated_price : (price || booking.negotiated_price || getPriceRange(booking.service_type).min.toString());
     if (!p) return;
     const numericPrice = parseInt(p.toString());
     const range = getPriceRange(booking.service_type);
@@ -732,7 +836,7 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
       return alert(`Price for ${booking.service_type} must be between ₹${range.min} and ₹${range.max}`);
     }
 
-    const isAccepting = !isTechnician && booking.negotiated_price && numericPrice === parseInt(booking.negotiated_price);
+    const isAccepting = forceAccept;
 
     if (isAccepting) {
       setShowCheckout(true);
@@ -771,6 +875,7 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
       alert('Proposal Updated');
       fetchBooking();
     }
+    setShowNegotiation(false);
   };
 
   const handlePaymentComplete = async (method: 'online' | 'cod') => {
@@ -807,7 +912,7 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
   const isTechnician = user?.role === 'technician';
 
   return (
-    <div className="pt-24 pb-12 min-h-screen bg-slate-50">
+    <div className="pt-20 sm:pt-24 pb-0 sm:pb-12 min-h-screen bg-slate-50 flex flex-col">
       <AnimatePresence>
         {showCheckout && (
           <CheckoutModal 
@@ -817,188 +922,222 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
           />
         )}
       </AnimatePresence>
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col h-[75vh]">
-          {/* Header */}
-          <div className="bg-primary p-6 text-white flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-bold">
-                {isTechnician ? `Negotiating with ${booking.customer_name}` : `Negotiating with ${booking.technician_name}`}
-              </h2>
-              <p className="opacity-90">{booking.service_type} Service in {booking.district}</p>
-            </div>
-            <div className="bg-white/20 px-4 py-2 rounded-xl text-sm">
-              Insurance up to ₹5,000 Applied
-            </div>
-          </div>
 
-          {/* Chat Area */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
-            <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl text-blue-800 text-sm mb-4">
-              <p className="font-bold flex items-center gap-2 mb-1">
-                <ShieldCheck className="w-4 h-4" /> Transparency First
-              </p>
-              {isTechnician 
-                ? "Please understand the customer's issue clearly before setting the final price."
-                : "Please explain your issue in detail so the technician can provide an accurate quote."}
-            </div>
-            
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] sm:max-w-[70%] p-4 rounded-2xl break-words ${m.sender_id === user?.id ? 'bg-primary text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none shadow-sm'}`}>
-                  <p className="text-xs opacity-70 mb-1 font-bold">{m.sender_name}</p>
-                  {m.content && <p className="leading-relaxed">{m.content}</p>}
-                  {m.attachment_url && (
-                    <div className="mt-2">
-                      {m.attachment_type === 'image' ? (
-                        <img 
-                          src={m.attachment_url} 
-                          alt="Attachment" 
-                          className="max-w-full rounded-lg border border-white/20"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <a 
-                          href={m.attachment_url} 
-                          download 
-                          className={`flex items-center gap-2 p-3 rounded-xl text-sm ${m.sender_id === user?.id ? 'bg-white/10 hover:bg-white/20' : 'bg-slate-100 hover:bg-slate-200'}`}
-                        >
-                          <FileIcon className="w-4 h-4" />
-                          <span className="flex-1 truncate">Document Attachment</span>
-                          <Download className="w-4 h-4" />
-                        </a>
-                      )}
-                    </div>
-                  )}
+      <div className="flex-1 max-w-5xl mx-auto w-full px-0 sm:px-4 flex flex-col">
+        <div className="bg-white sm:rounded-[2rem] shadow-2xl sm:shadow-slate-200/50 overflow-hidden flex flex-col flex-1 sm:max-h-[85vh]">
+          {/* Header */}
+          <div className="bg-slate-900 p-4 sm:p-6 text-white flex justify-between items-center shrink-0">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary rounded-2xl flex items-center justify-center text-white font-bold text-lg">
+                {(isTechnician ? booking.customer_name : booking.technician_name)?.charAt(0)}
+              </div>
+              <div>
+                <h2 className="text-base sm:text-xl font-bold leading-tight">
+                  {isTechnician ? booking.customer_name : booking.technician_name}
+                </h2>
+                <div className="flex items-center gap-2 text-[10px] sm:text-xs text-slate-400 font-medium">
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                  {booking.service_type} • {booking.district}
                 </div>
               </div>
-            ))}
+            </div>
+            <div className="hidden sm:flex items-center gap-2 bg-white/10 px-4 py-2 rounded-xl text-xs font-bold border border-white/5">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              Insurance Covered
+            </div>
+            <button 
+              onClick={() => setShowNegotiation(!showNegotiation)}
+              className="sm:hidden p-2 bg-white/10 rounded-xl"
+            >
+              <IndianRupee className="w-5 h-5" />
+            </button>
           </div>
 
-          {/* Input Area */}
-          <div className="p-6 bg-white border-t border-slate-100">
-            {booking.status === 'confirmed' ? (
-              <div className="bg-green-50 p-4 rounded-2xl text-green-800 text-center font-bold">
-                Booking Confirmed at ₹{booking.negotiated_price}
-              </div>
-            ) : (
-              <>
-                {/* Proposed Price / Counter Offer Box */}
-                {(booking.negotiated_price || isTechnician) && (
-                  <div className="mb-6 p-5 bg-slate-50 rounded-2xl border border-slate-200">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-6">
-                      <div className="flex items-center gap-4">
-                        <div className="bg-primary/10 p-3 rounded-2xl">
-                          <IndianRupee className="w-6 h-6 text-primary" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            {booking.negotiated_price ? 'Current Proposal' : 'Initial Proposal'}
-                          </p>
-                          <p className="text-4xl font-black text-slate-900">
-                            ₹{booking.negotiated_price || getPriceRange(booking.service_type).min}
-                          </p>
-                        </div>
+          {/* Negotiation Panel (Mobile Collapsible) */}
+          <AnimatePresence>
+            {(showNegotiation || (window.innerWidth > 640 && (booking.negotiated_price || isTechnician))) && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="bg-slate-50 border-b border-slate-100 overflow-hidden shrink-0"
+              >
+                <div className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-6">
+                    <div className="flex items-center gap-4 w-full sm:w-auto">
+                      <div className="bg-primary/10 p-3 rounded-2xl">
+                        <IndianRupee className="w-6 h-6 text-primary" />
                       </div>
-                      {!isTechnician ? (
-                        booking.negotiated_price ? (
-                          <button onClick={confirmPrice} className="btn-primary w-full sm:w-auto px-8 py-4 shadow-xl shadow-primary/20">
-                            Accept & Book Now
-                          </button>
-                        ) : (
-                          <div className="bg-slate-100 text-slate-500 px-4 py-2 rounded-xl text-sm italic">
-                            Waiting for technician's quote...
-                          </div>
-                        )
-                      ) : (
-                        booking.negotiated_price ? (
-                          <div className="flex items-center gap-2 bg-primary/5 text-primary px-4 py-2 rounded-xl border border-primary/10">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span className="text-xs font-bold uppercase tracking-wider">Waiting for Customer</span>
-                          </div>
-                        ) : (
-                          <div className="bg-secondary/10 text-secondary px-4 py-2 rounded-xl border border-secondary/10 text-xs font-bold uppercase">
-                            Set Your Price Below
-                          </div>
-                        )
+                      <div className="flex-1">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          {booking.negotiated_price ? 'Current Proposal' : 'Initial Proposal'}
+                        </p>
+                        <p className="text-2xl sm:text-4xl font-black text-slate-900">
+                          ₹{booking.negotiated_price || getPriceRange(booking.service_type).min}
+                        </p>
+                      </div>
+                      {!isTechnician && booking.negotiated_price && (
+                        <button 
+                          onClick={() => confirmPrice(true)} 
+                          className="sm:hidden bg-primary text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-primary/20"
+                        >
+                          Accept
+                        </button>
                       )}
                     </div>
-                    
-                    <div className="pt-6 border-t border-slate-200">
-                      <div className="flex justify-between items-end mb-4">
+
+                    <div className="w-full sm:w-auto flex flex-col gap-4">
+                      <div className="flex justify-between items-end">
                         <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                            {isTechnician ? (booking.negotiated_price ? 'Update Your Proposal' : 'Propose Your Price') : 'Your Counter Offer'}
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                            {isTechnician ? (booking.negotiated_price ? 'Update Proposal' : 'Propose Price') : 'Counter Offer'}
                           </p>
-                          <p className="text-xs text-slate-500">
-                            Range: <span className="font-bold text-slate-700">₹{getPriceRange(booking.service_type).min} - ₹{getPriceRange(booking.service_type).max}</span>
+                          <p className="text-[10px] text-slate-500 font-bold">
+                            Range: ₹{getPriceRange(booking.service_type).min} - ₹{getPriceRange(booking.service_type).max}
                           </p>
                         </div>
                         <div className="text-right">
-                          <span className="text-3xl font-black text-primary">₹{price || booking.negotiated_price || getPriceRange(booking.service_type).min}</span>
+                          <span className="text-xl sm:text-2xl font-black text-primary">₹{price || booking.negotiated_price || getPriceRange(booking.service_type).min}</span>
                         </div>
                       </div>
                       
-                      <div className="flex flex-col gap-6">
+                      <div className="flex items-center gap-4">
                         <input 
                           type="range"
                           min={getPriceRange(booking.service_type).min}
                           max={getPriceRange(booking.service_type).max}
                           step="10"
-                          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
+                          className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
                           value={price || booking.negotiated_price || getPriceRange(booking.service_type).min}
                           onChange={(e) => setPrice(e.target.value)}
                         />
                         <button 
                           onClick={confirmPrice} 
-                          className="w-full btn-secondary py-3 font-bold uppercase tracking-widest text-xs"
+                          className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors"
                         >
-                          {isTechnician ? (booking.negotiated_price ? 'Submit New Proposal' : 'Send Initial Quote') : 'Send Counter Offer'}
+                          {isTechnician ? 'Send' : 'Counter'}
                         </button>
                       </div>
                     </div>
-                  </div>
-                )}
 
+                    {!isTechnician && booking.negotiated_price && (
+                      <button 
+                        onClick={() => confirmPrice(true)} 
+                        className="hidden sm:block btn-primary px-8 py-4 shadow-xl shadow-primary/20"
+                      >
+                        Accept & Book Now
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Chat Area */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
+            <div className="flex justify-center">
+              <div className="bg-blue-50 border border-blue-100 px-4 py-2 rounded-full text-[10px] sm:text-xs font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2">
+                <ShieldCheck className="w-3 h-3" /> Secure Negotiation Channel
+              </div>
+            </div>
+            
+            {messages.map((m, i) => (
+              <div key={i} className={`flex ${m.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] sm:max-w-[75%] space-y-1`}>
+                  <div className={`p-4 rounded-[1.5rem] shadow-sm ${m.sender_id === user?.id ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100'}`}>
+                    {m.content && <p className="text-sm sm:text-base leading-relaxed font-medium">{m.content}</p>}
+                    {m.attachment_url && (
+                      <div className="mt-3">
+                        {m.attachment_type === 'image' ? (
+                          <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg">
+                            <img 
+                              src={m.attachment_url} 
+                              alt="Attachment" 
+                              className="max-w-full hover:scale-105 transition-transform duration-500"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                        ) : (
+                          <a 
+                            href={m.attachment_url} 
+                            download 
+                            className={`flex items-center gap-3 p-3 rounded-2xl text-sm transition-all ${m.sender_id === user?.id ? 'bg-white/10 hover:bg-white/20' : 'bg-slate-50 hover:bg-slate-100'}`}
+                          >
+                            <div className="bg-primary/20 p-2 rounded-xl"><FileIcon className="w-4 h-4 text-primary" /></div>
+                            <span className="flex-1 truncate font-bold">{m.name || 'Document'}</span>
+                            <Download className="w-4 h-4 opacity-50" />
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className={`text-[10px] font-bold uppercase tracking-widest text-slate-400 px-2 ${m.sender_id === user?.id ? 'text-right' : 'text-left'}`}>
+                    {m.sender_name} • {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="p-4 sm:p-6 bg-white border-t border-slate-100 shrink-0">
+            {booking.status === 'confirmed' ? (
+              <div className="bg-green-50 p-5 rounded-3xl text-green-700 text-center font-black uppercase tracking-widest text-sm border border-green-100 flex items-center justify-center gap-3">
+                <CheckCircle className="w-5 h-5" />
+                Booking Confirmed at ₹{booking.negotiated_price}
+              </div>
+            ) : (
+              <div className="space-y-4">
                 {attachment && (
-                  <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3"
+                  >
                     {attachment.type === 'image' ? (
-                      <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-200">
+                      <div className="w-10 h-10 rounded-xl overflow-hidden border border-slate-200">
                         <img src={attachment.url} className="w-full h-full object-cover" />
                       </div>
                     ) : (
-                      <div className="bg-primary/10 p-2 rounded-lg">
-                        <FileIcon className="text-primary w-6 h-6" />
+                      <div className="bg-primary/10 p-2 rounded-xl">
+                        <FileIcon className="text-primary w-5 h-5" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold truncate">{attachment.name}</p>
-                      <p className="text-xs text-slate-500 uppercase">{attachment.type}</p>
+                      <p className="text-xs font-bold truncate">{attachment.name}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">{attachment.type}</p>
                     </div>
-                    <button onClick={() => setAttachment(null)} className="p-2 hover:bg-slate-200 rounded-full">
-                      <X className="w-4 h-4" />
+                    <button onClick={() => setAttachment(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                      <X className="w-4 h-4 text-slate-400" />
                     </button>
-                  </div>
+                  </motion.div>
                 )}
 
                 <div className="flex gap-2 sm:gap-4 items-center">
-                  <label className="cursor-pointer p-2 sm:p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 flex-shrink-0">
-                    <Paperclip className="w-5 h-5 sm:w-6 h-6" />
+                  <label className="cursor-pointer p-3 hover:bg-slate-50 rounded-2xl transition-all duration-300 text-slate-400 hover:text-primary flex-shrink-0 border border-transparent hover:border-slate-100">
+                    <Paperclip className="w-6 h-6" />
                     <input type="file" className="hidden" onChange={handleFileChange} />
                   </label>
-                  <input 
-                    type="text" 
-                    placeholder={isTechnician ? "Reply..." : "Explain issue..."}
-                    className="flex-1 py-2.5 px-3 sm:px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-primary shadow-inner text-sm sm:text-base min-w-0"
-                    value={newMsg}
-                    onChange={(e) => setNewMsg(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                  />
-                  <button onClick={sendMessage} className="btn-primary p-2.5 sm:p-3 rounded-xl shadow-lg shadow-primary/20 flex-shrink-0">
-                    <MessageSquare className="w-5 h-5 sm:w-6 h-6" />
+                  <div className="flex-1 relative">
+                    <input 
+                      type="text" 
+                      placeholder={isTechnician ? "Type a reply..." : "Explain your issue..."}
+                      className="w-full py-4 px-6 bg-slate-50 rounded-3xl border-none focus:ring-2 focus:ring-primary shadow-inner text-sm sm:text-base transition-all duration-300"
+                      value={newMsg}
+                      onChange={(e) => setNewMsg(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                    />
+                  </div>
+                  <button 
+                    onClick={sendMessage} 
+                    className="bg-slate-900 hover:bg-slate-800 text-white p-4 rounded-2xl shadow-xl shadow-slate-900/20 transition-all duration-300 flex-shrink-0"
+                  >
+                    <MessageSquare className="w-6 h-6" />
                   </button>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -1006,6 +1145,7 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
     </div>
   );
 };
+
 
 const AdminPanel = ({ user }: { user: User | null }) => {
   const [stats, setStats] = useState<any>(null);
@@ -1301,8 +1441,14 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) setUser(JSON.parse(savedUser));
+    try {
+      const savedUser = localStorage.getItem('user');
+      if (savedUser) setUser(JSON.parse(savedUser));
+    } catch (e) {
+      console.error('Failed to parse user from localStorage', e);
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+    }
   }, []);
 
   const handleLogin = (u: User, token: string) => {
