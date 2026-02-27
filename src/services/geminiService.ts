@@ -35,3 +35,59 @@ export const predictCost = async (serviceType: string, description: string, dist
     };
   }
 };
+
+export const generateTechnicianResponse = async (
+  serviceType: string,
+  userMessage: string,
+  currentPrice: number,
+  counterPrice: number | null,
+  district: string,
+  chatHistory: { sender: string, content: string }[]
+) => {
+  try {
+    const historyStr = chatHistory.map(m => `${m.sender}: ${m.content}`).join('\n');
+    const prompt = `You are a professional technician in Bihar, India. You are chatting with a customer in Hinglish (Hindi + English).
+    
+    Context:
+    Service: ${serviceType}
+    Location: ${district}
+    Current Negotiated Price: ₹${currentPrice}
+    Customer's Counter Offer: ${counterPrice ? `₹${counterPrice}` : 'None'}
+    
+    Chat History:
+    ${historyStr}
+    
+    Customer's Latest Message: "${userMessage}"
+    
+    Rules:
+    1. Respond in Hinglish (e.g., "Theek hai", "Mei kar dunga", "Thoda kam hai").
+    2. Be professional but friendly.
+    3. If the customer is bargaining (counterPrice is provided), you can either agree, disagree, or give a counter-offer.
+    4. If you give a counter-offer, it should be a number between the current price and the customer's offer.
+    5. If you agree, say it clearly.
+    6. Your response MUST be in JSON format:
+    {
+      "message": "Your Hinglish response here",
+      "proposedPrice": number (the price you are proposing or agreeing to),
+      "isAgreement": boolean (true if you are agreeing to the customer's price or if you think the deal is done)
+    }
+    
+    Example responses:
+    - "₹600 thoda kam hai sir, ₹750 me done karte hain?" (isAgreement: false)
+    - "Theek hai, ₹700 me kar dunga. Kab aana hai?" (isAgreement: true)
+    - "Mei aapki kya madad kar sakta hoon?" (isAgreement: false)`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    return JSON.parse(response.text || '{}');
+  } catch (error) {
+    console.error("AI Negotiation Error:", error);
+    return null;
+  }
+};

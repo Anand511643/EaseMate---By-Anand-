@@ -23,10 +23,12 @@ import {
   Paperclip,
   Image as ImageIcon,
   File as FileIcon,
-  Download
+  Download,
+  Rocket,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { predictCost } from './services/geminiService';
+import { predictCost, generateTechnicianResponse } from './services/geminiService';
 
 // --- Types ---
 interface User {
@@ -78,6 +80,9 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
             
             {user ? (
               <div className="flex items-center gap-4">
+                <Link to="/bookings" className="text-slate-600 hover:text-primary font-medium flex items-center gap-1">
+                  <Clock className="w-4 h-4" /> My Bookings
+                </Link>
                 {user.role === 'admin' && (
                   <Link to="/admin" className="p-2 hover:bg-slate-100 rounded-full text-secondary">
                     <LayoutDashboard className="w-5 h-5" />
@@ -114,6 +119,9 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
             <Link to="/register-tech" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Become Technician</Link>
             <Link to="/privacy" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Privacy Policy</Link>
             <Link to="/about" onClick={() => setIsOpen(false)} className="block text-lg font-medium">About FixMate</Link>
+            {user && (
+              <Link to="/bookings" onClick={() => setIsOpen(false)} className="block text-lg font-medium">My Bookings</Link>
+            )}
             {user ? (
               <button onClick={() => { onLogout(); setIsOpen(false); }} className="w-full text-left text-red-500 font-medium">Logout</button>
             ) : (
@@ -790,39 +798,38 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
     setAttachment(null);
     await fetchMessages();
 
-    // 2. Automated Technician Reply (only if customer sends first message or no price set)
-    if (user?.role === 'customer' && !booking.negotiated_price) {
-      const range = getPriceRange(booking.service_type);
-      const prediction = await predictCost(booking.service_type, currentMsg, booking.district);
-      
-      // Extract numeric value from prediction.estimatedRange (e.g., "₹600 - ₹800" -> 700)
-      let suggestedPrice = range.min;
-      const matches = prediction.estimatedRange?.match(/\d+/g);
-      if (matches && matches.length >= 2) {
-        suggestedPrice = Math.floor((parseInt(matches[0]) + parseInt(matches[1])) / 2);
-      } else if (matches && matches.length === 1) {
-        suggestedPrice = parseInt(matches[0]);
-      }
-      
-      // Clamp to category limits
-      suggestedPrice = Math.max(range.min, Math.min(range.max, suggestedPrice));
+    // 2. Automated Technician Reply (only if customer sends message)
+    if (user?.role === 'customer') {
+      const aiResponse = await generateTechnicianResponse(
+        booking.service_type,
+        currentMsg,
+        booking.negotiated_price,
+        null,
+        booking.district,
+        messages.slice(-5).map(m => ({ 
+          sender: m.sender_id === user.id ? 'Customer' : 'Technician', 
+          content: m.content 
+        }))
+      );
 
-      const autoReply = `I've analyzed your request. Based on market rates in ${booking.district}, I will charge ₹${suggestedPrice} for this work. This includes labor and basic materials. ${prediction.explanation}`;
-      
-      await fetch(`/api/bookings/${id}/messages/auto`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ 
-          content: autoReply,
-          proposedPrice: suggestedPrice
-        })
-      });
-      
-      fetchBooking();
-      fetchMessages();
+      if (aiResponse) {
+        await fetch(`/api/bookings/${id}/messages/auto`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({ 
+            content: aiResponse.message,
+            proposedPrice: aiResponse.proposedPrice || booking.negotiated_price,
+            attachment_type: aiResponse.isAgreement ? 'action' : null,
+            attachment_url: aiResponse.isAgreement ? 'accept' : null
+          })
+        });
+        
+        fetchBooking();
+        fetchMessages();
+      }
     }
   };
 
@@ -855,19 +862,48 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
       })
     });
 
-    if (isAccepting) {
-      alert(`Booking Confirmed at ₹${numericPrice}!`);
-      navigate('/book');
-    } else if (!isTechnician) {
-      // Customer countered, trigger auto-reply
-      await fetch(`/api/bookings/${id}/messages/counter-reply`, {
+    if (!isTechnician) {
+      // Send message from customer about the counter offer
+      await fetch(`/api/bookings/${id}/messages`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ counterPrice: numericPrice })
+        body: JSON.stringify({ 
+          content: `I am offering ₹${numericPrice} for this service.`
+        })
       });
+
+      // Customer countered, trigger AI reply
+      const aiResponse = await generateTechnicianResponse(
+        booking.service_type,
+        `I want to pay ₹${numericPrice}`,
+        booking.negotiated_price,
+        numericPrice,
+        booking.district,
+        messages.slice(-5).map(m => ({ 
+          sender: m.sender_id === user?.id ? 'Customer' : 'Technician', 
+          content: m.content 
+        }))
+      );
+
+      if (aiResponse) {
+        await fetch(`/api/bookings/${id}/messages/auto`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({ 
+            content: aiResponse.message,
+            proposedPrice: aiResponse.proposedPrice,
+            attachment_type: aiResponse.isAgreement ? 'action' : null,
+            attachment_url: aiResponse.isAgreement ? 'accept' : null
+          })
+        });
+      }
+      
       alert('Counter Offer Sent');
       fetchBooking();
       fetchMessages();
@@ -1012,7 +1048,7 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
                           onChange={(e) => setPrice(e.target.value)}
                         />
                         <button 
-                          onClick={confirmPrice} 
+                          onClick={() => confirmPrice()} 
                           className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors"
                         >
                           {isTechnician ? 'Send' : 'Counter'}
@@ -1047,7 +1083,17 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
                 <div className={`max-w-[85%] sm:max-w-[75%] space-y-1`}>
                   <div className={`p-4 rounded-[1.5rem] shadow-sm ${m.sender_id === user?.id ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100'}`}>
                     {m.content && <p className="text-sm sm:text-base leading-relaxed font-medium">{m.content}</p>}
-                    {m.attachment_url && (
+                    {m.attachment_type === 'action' && m.attachment_url === 'accept' && !isTechnician && booking.status !== 'confirmed' && (
+                      <div className="mt-4">
+                        <button 
+                          onClick={() => confirmPrice(true)}
+                          className="w-full py-3 bg-primary text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle className="w-4 h-4" /> Accept & Pay ₹{booking.negotiated_price}
+                        </button>
+                      </div>
+                    )}
+                    {m.attachment_url && m.attachment_type !== 'action' && (
                       <div className="mt-3">
                         {m.attachment_type === 'image' ? (
                           <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg">
@@ -1248,39 +1294,101 @@ const AdminPanel = ({ user }: { user: User | null }) => {
 
 const AboutPage = () => (
   <div className="pt-24 pb-12 min-h-screen bg-slate-50">
-    <div className="max-w-4xl mx-auto px-4 bg-white p-12 rounded-3xl shadow-sm">
-      <h1 className="text-3xl md:text-4xl font-bold mb-8 text-primary">About FixMate</h1>
-      <div className="prose prose-slate max-w-none space-y-8">
-        <section>
-          <h2 className="text-2xl font-bold mb-4">Empowering Bihar's Service Economy</h2>
-          <p className="text-lg leading-relaxed text-slate-600">
-            FixMate is Bihar's first smart technician booking platform, designed to bridge the gap between skilled local technicians and households. 
-            We believe in transparency, fair bargaining, and the power of local communities.
-          </p>
-        </section>
-
-        <div className="grid md:grid-cols-2 gap-8">
-          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-            <h3 className="text-xl font-bold mb-3 flex items-center gap-2">
-              <ShieldCheck className="text-primary w-5 h-5" /> Verified Professionals
-            </h3>
-            <p className="text-slate-600">Every technician on our platform undergoes a strict verification process, including ID proof and skill assessment.</p>
+    <div className="max-w-5xl mx-auto px-4">
+      <div className="bg-white p-8 md:p-16 rounded-[3rem] shadow-2xl shadow-slate-200/50 relative overflow-hidden">
+        {/* Decorative background element */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+        
+        <div className="relative z-10">
+          <div className="inline-block bg-primary/10 text-primary px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest mb-6">
+            Our Story
           </div>
-          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-            <h3 className="text-xl font-bold mb-3 flex items-center gap-2">
-              <IndianRupee className="text-primary w-5 h-5" /> Fair Bargaining
-            </h3>
-            <p className="text-slate-600">Our unique negotiation chat allows customers and technicians to reach a mutually beneficial price before the work starts.</p>
+          <h1 className="text-4xl md:text-6xl font-black mb-8 text-slate-900 tracking-tight leading-none">
+            FixMate: Reimagining <span className="text-primary">Bihar's</span> Service Economy.
+          </h1>
+          
+          <div className="grid lg:grid-cols-3 gap-12">
+            <div className="lg:col-span-2 space-y-8">
+              <section>
+                <h2 className="text-2xl font-bold mb-4 text-slate-800">The Problem We're Solving</h2>
+                <p className="text-lg leading-relaxed text-slate-600">
+                  In the heart of Bihar, thousands of skilled technicians—electricians, plumbers, and mechanics—operate in a fragmented, unorganized shadow economy. They lack digital visibility, face inconsistent work opportunities, and struggle with unfair pricing. On the other side, households face a "trust deficit," often struggling to find reliable help when they need it most.
+                </p>
+              </section>
+
+              <section>
+                <h2 className="text-2xl font-bold mb-4 text-slate-800">The FixMate Spark</h2>
+                <p className="text-lg leading-relaxed text-slate-600">
+                  FixMate wasn't born in a boardroom; it was born on the streets of Patna. Our founder, Anand Amrit Raj, witnessed a highly skilled electrician lose a day's wage simply because he couldn't connect with a customer just two blocks away. We realized that technology shouldn't just be for the elite; it should be a tool for the "skilled hands" that keep our cities running.
+                </p>
+              </section>
+
+              <section className="bg-slate-900 p-8 md:p-12 rounded-[2.5rem] text-white shadow-xl shadow-slate-900/20">
+                <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+                  <Rocket className="text-primary w-8 h-8" /> Why We Are Different
+                </h2>
+                <div className="grid md:grid-cols-2 gap-8">
+                  <div className="space-y-3">
+                    <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center">
+                      <IndianRupee className="text-primary w-6 h-6" />
+                    </div>
+                    <h3 className="text-xl font-bold">Transparent Bargaining</h3>
+                    <p className="text-slate-400 text-sm leading-relaxed">
+                      We respect the local culture of negotiation. Our platform facilitates a fair bargaining process, ensuring both parties are satisfied before work begins.
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center">
+                      <ShieldCheck className="text-primary w-6 h-6" />
+                    </div>
+                    <h3 className="text-xl font-bold">Hyper-Local Trust</h3>
+                    <p className="text-slate-400 text-sm leading-relaxed">
+                      We aren't just an app; we are a community. By focusing on district-level verification, we build a network of trusted "mates" you can rely on.
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-2xl font-bold mb-4 text-slate-800">The Road Ahead</h2>
+                <p className="text-lg leading-relaxed text-slate-600">
+                  We are starting with Bihar, a market with immense untapped potential and a rapidly growing digital footprint. Our goal is to onboard 10,000+ technicians across 38 districts in the next 18 months, creating a scalable model for Tier 2 and Tier 3 cities across India.
+                </p>
+              </section>
+            </div>
+
+            <div className="space-y-8">
+              <div className="bg-primary p-8 rounded-[2rem] text-white">
+                <h3 className="text-xl font-bold mb-4">Our Vision</h3>
+                <p className="text-lg italic font-medium leading-relaxed opacity-90">
+                  "To create a digital ecosystem where every skilled hand in Bihar finds work, and every household finds a trusted mate for their repairs."
+                </p>
+                <div className="mt-8 pt-6 border-t border-white/20">
+                  <p className="font-black text-xl">Anand Amrit Raj</p>
+                  <p className="text-sm font-bold uppercase tracking-widest opacity-70">Founder, FixMate</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
+                <h3 className="text-lg font-bold mb-6 text-slate-900">Impact Metrics</h3>
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-3xl font-black text-primary">100%</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Verified Techs</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-black text-primary">38</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Target Districts</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-black text-primary">₹0</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Initial Onboarding Fee</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-
-        <section className="bg-primary/5 p-8 rounded-3xl border border-primary/10">
-          <h2 className="text-2xl font-bold mb-4">Our Vision</h2>
-          <p className="text-slate-700 italic">
-            "To create a digital ecosystem where every skilled hand in Bihar finds work, and every household finds a trusted mate for their repairs."
-          </p>
-          <p className="mt-4 font-bold text-primary">— Anand Amrit Raj, Founder</p>
-        </section>
       </div>
     </div>
   </div>
@@ -1435,6 +1543,123 @@ const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: Us
   );
 };
 
+const BookingHistoryPage = ({ user }: { user: User | null }) => {
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    fetchBookings();
+  }, [user]);
+
+  const fetchBookings = async () => {
+    try {
+      const response = await fetch('/api/bookings', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      setBookings(data);
+    } catch (error) {
+      console.error('Fetch Bookings Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="pt-24 flex justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-24 pb-12 min-h-screen bg-slate-50">
+      <div className="max-w-5xl mx-auto px-4">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-black text-slate-900">My Bookings</h1>
+          <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm text-sm font-bold text-slate-500">
+            {bookings.length} Total Bookings
+          </div>
+        </div>
+
+        {bookings.length === 0 ? (
+          <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100 shadow-xl shadow-slate-200/50">
+            <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Clock className="w-10 h-10 text-slate-300" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">No bookings yet</h2>
+            <p className="text-slate-500 mb-8">You haven't made any service bookings yet. Start by finding a technician!</p>
+            <Link to="/book" className="btn-primary inline-flex">
+              Book a Technician <ArrowRight className="w-5 h-5" />
+            </Link>
+          </div>
+        ) : (
+          <div className="grid gap-6">
+            {bookings.map((booking) => (
+              <motion.div
+                key={booking.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => navigate(`/negotiate/${booking.id}`)}
+              >
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-primary/10 p-4 rounded-2xl">
+                      <Wrench className="text-primary w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-lg font-bold text-slate-900">{booking.service_type}</h3>
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                          booking.status === 'confirmed' ? 'bg-green-100 text-green-600' : 
+                          booking.status === 'completed' ? 'bg-blue-100 text-blue-600' :
+                          'bg-yellow-100 text-yellow-600'
+                        }`}>
+                          {booking.status}
+                        </span>
+                      </div>
+                      <p className="text-slate-500 text-sm flex items-center gap-1">
+                        <User className="w-3 h-3" /> {user?.role === 'technician' ? booking.customer_name : booking.technician_name}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between md:text-right gap-8 border-t md:border-t-0 pt-4 md:pt-0">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Price</p>
+                      <p className="text-xl font-black text-primary">₹{booking.negotiated_price}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Date</p>
+                      <p className="text-sm font-bold text-slate-700">
+                        {new Date(booking.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <div className="hidden sm:block">
+                      <div className="bg-slate-50 p-2 rounded-full text-slate-400">
+                        <ArrowRight className="w-5 h-5" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -1473,6 +1698,7 @@ export default function App() {
             <Route path="/book" element={<BookingPage user={user} />} />
             <Route path="/negotiate/:id" element={<NegotiatePage user={user} />} />
             <Route path="/admin" element={<AdminPanel user={user} />} />
+            <Route path="/bookings" element={<BookingHistoryPage user={user} />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/login" element={<AuthPage type="login" onLogin={handleLogin} />} />

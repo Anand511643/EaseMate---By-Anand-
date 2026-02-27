@@ -369,14 +369,54 @@ async function startServer() {
 
       const bookingId = Number(result.lastInsertRowid);
       
-      // Initial message from technician
-      const initialMessage = `Hello! I see you need ${service_type || 'General'} service. My standard charge for this is ₹${tech.base_charge}. We can discuss the details here. What exactly is the issue?`;
+      // Initial message from technician in Hinglish
+      const initialMessage = "Hello! Mei aapki kya madad kar sakta hoon?";
       db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, tech.user_id, initialMessage);
       
       res.json({ booking_id: bookingId });
     } catch (err: any) {
       console.error('Booking Error:', err);
       res.status(500).json({ error: 'Failed to create booking. Please try again.' });
+    }
+  });
+
+  app.get('/api/bookings', authenticate, (req: any, res) => {
+    try {
+      let bookings;
+      if (req.user.role === 'admin') {
+        bookings = db.prepare(`
+          SELECT b.*, u.name as customer_name, t_u.name as technician_name, t.district
+          FROM bookings b
+          JOIN users u ON b.customer_id = u.id
+          JOIN technicians t ON b.technician_id = t.id
+          JOIN users t_u ON t.user_id = t_u.id
+          ORDER BY b.created_at DESC
+        `).all();
+      } else if (req.user.role === 'technician') {
+        bookings = db.prepare(`
+          SELECT b.*, u.name as customer_name, t_u.name as technician_name, t.district
+          FROM bookings b
+          JOIN users u ON b.customer_id = u.id
+          JOIN technicians t ON b.technician_id = t.id
+          JOIN users t_u ON t.user_id = t_u.id
+          WHERE t.user_id = ?
+          ORDER BY b.created_at DESC
+        `).all(req.user.id);
+      } else {
+        bookings = db.prepare(`
+          SELECT b.*, u.name as customer_name, t_u.name as technician_name, t.district
+          FROM bookings b
+          JOIN users u ON b.customer_id = u.id
+          JOIN technicians t ON b.technician_id = t.id
+          JOIN users t_u ON t.user_id = t_u.id
+          WHERE b.customer_id = ?
+          ORDER BY b.created_at DESC
+        `).all(req.user.id);
+      }
+      res.json(bookings);
+    } catch (err) {
+      console.error('Fetch Bookings Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -474,7 +514,7 @@ async function startServer() {
 
   app.post('/api/bookings/:id/messages/auto', authenticate, (req: any, res) => {
     try {
-      const { content, proposedPrice } = req.body;
+      const { content, proposedPrice, attachment_url, attachment_type } = req.body;
       const bookingId = req.params.id;
       
       // Get technician user ID for this booking
@@ -482,7 +522,13 @@ async function startServer() {
       
       if (booking) {
         // Insert message as technician
-        db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.user_id, content);
+        db.prepare('INSERT INTO messages (booking_id, sender_id, content, attachment_url, attachment_type) VALUES (?, ?, ?, ?, ?)').run(
+          bookingId, 
+          booking.user_id, 
+          content,
+          attachment_url || null,
+          attachment_type || null
+        );
         
         // Update proposed price and platform fee
         const platformFee = calculatePlatformFee(proposedPrice);
@@ -492,55 +538,6 @@ async function startServer() {
       res.json({ success: true });
     } catch (err) {
       console.error('Auto Message Error:', err);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  app.post('/api/bookings/:id/messages/counter-reply', authenticate, (req: any, res) => {
-    try {
-      const { counterPrice } = req.body;
-      const bookingId = req.params.id;
-      
-      const booking = db.prepare(`
-        SELECT b.*, t.user_id as tech_user_id, t.district, t.skills
-        FROM bookings b
-        JOIN technicians t ON b.technician_id = t.id
-        WHERE b.id = ?
-      `).get(bookingId);
-      
-      if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-      const currentPrice = booking.negotiated_price;
-      let reply = '';
-      let finalPrice = currentPrice;
-
-      // Simple logic: If counter is within 15% of current price, or if it's the second counter, maybe agree.
-      const diff = currentPrice - counterPrice;
-      const percentDiff = (diff / currentPrice) * 100;
-
-      if (percentDiff <= 15) {
-        reply = `Alright, I agree to ₹${counterPrice}. It's a fair price for the work. You can proceed to confirm the booking now.`;
-        finalPrice = counterPrice;
-      } else {
-        const middleGround = Math.floor((currentPrice + counterPrice) / 2);
-        reply = `₹${counterPrice} is a bit low considering the effort and travel to ${booking.district}. How about we settle at ₹${middleGround}? This is my best offer.`;
-        finalPrice = middleGround;
-      }
-
-      const range = getPriceRange(booking.service_type);
-      if (finalPrice < range.min) finalPrice = range.min;
-      if (finalPrice > range.max) finalPrice = range.max;
-
-      // Insert message as technician
-      db.prepare('INSERT INTO messages (booking_id, sender_id, content) VALUES (?, ?, ?)').run(bookingId, booking.tech_user_id, reply);
-      
-      // Update proposed price and platform fee
-      const platformFee = calculatePlatformFee(finalPrice);
-      db.prepare('UPDATE bookings SET negotiated_price = ?, platform_fee = ? WHERE id = ?').run(finalPrice, platformFee, bookingId);
-      
-      res.json({ success: true, proposedPrice: finalPrice });
-    } catch (err) {
-      console.error('Counter Reply Error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
