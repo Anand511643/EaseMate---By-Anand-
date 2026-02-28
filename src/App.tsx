@@ -25,7 +25,13 @@ import {
   File as FileIcon,
   Download,
   Rocket,
-  Clock
+  Clock,
+  Trash2,
+  AlertCircle,
+  CheckCircle2,
+  BarChart3,
+  Users,
+  Briefcase
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { predictCost, generateTechnicianResponse } from './services/geminiService';
@@ -80,14 +86,15 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
             
             {user ? (
               <div className="flex items-center gap-4">
+                {user.role === 'admin' && (
+                  <Link to="/admin" className="flex items-center gap-2 px-4 py-2 bg-secondary/10 text-secondary rounded-xl hover:bg-secondary/20 transition-all font-bold">
+                    <LayoutDashboard className="w-4 h-4" />
+                    <span>Admin Panel</span>
+                  </Link>
+                )}
                 <Link to="/bookings" className="text-slate-600 hover:text-primary font-medium flex items-center gap-1">
                   <Clock className="w-4 h-4" /> My Bookings
                 </Link>
-                {user.role === 'admin' && (
-                  <Link to="/admin" className="p-2 hover:bg-slate-100 rounded-full text-secondary">
-                    <LayoutDashboard className="w-5 h-5" />
-                  </Link>
-                )}
                 <span className="text-sm font-semibold text-slate-700">Hi, {user.name?.split(' ')[0] || 'User'}</span>
                 <button onClick={onLogout} className="p-2 hover:bg-red-50 rounded-full text-red-500">
                   <LogOut className="w-5 h-5" />
@@ -120,7 +127,14 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
             <Link to="/privacy" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Privacy Policy</Link>
             <Link to="/about" onClick={() => setIsOpen(false)} className="block text-lg font-medium">About FixMate</Link>
             {user && (
-              <Link to="/bookings" onClick={() => setIsOpen(false)} className="block text-lg font-medium">My Bookings</Link>
+              <>
+                {user.role === 'admin' && (
+                  <Link to="/admin" onClick={() => setIsOpen(false)} className="block text-lg font-bold text-secondary flex items-center gap-2">
+                    <LayoutDashboard className="w-5 h-5" /> Admin Dashboard
+                  </Link>
+                )}
+                <Link to="/bookings" onClick={() => setIsOpen(false)} className="block text-lg font-medium">My Bookings</Link>
+              </>
             )}
             {user ? (
               <button onClick={() => { onLogout(); setIsOpen(false); }} className="w-full text-left text-red-500 font-medium">Logout</button>
@@ -1194,14 +1208,33 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
 
 
 const AdminPanel = ({ user }: { user: User | null }) => {
+  console.log('AdminPanel Rendered, User Role:', user?.role);
   const [stats, setStats] = useState<any>(null);
   const [techs, setTechs] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'analytics' | 'technicians' | 'bookings'>('analytics');
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (user?.role !== 'admin') return;
-    fetchStats();
-    fetchTechs();
+    fetchAllData();
   }, [user]);
+
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchStats(),
+        fetchTechs(),
+        fetchBookings()
+      ]);
+    } catch (error) {
+      console.error('Admin Data Fetch Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchStats = async () => {
     const res = await fetch('/api/admin/stats', {
@@ -1219,12 +1252,44 @@ const AdminPanel = ({ user }: { user: User | null }) => {
     setTechs(data);
   };
 
+  const fetchBookings = async () => {
+    const res = await fetch('/api/admin/bookings', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    });
+    const data = await res.json();
+    setBookings(data);
+  };
+
   const verifyTech = async (id: number) => {
     await fetch(`/api/admin/technicians/${id}/verify`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     });
     fetchTechs();
+    fetchStats();
+  };
+
+  const deleteTech = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this technician?')) return;
+    await fetch(`/api/admin/technicians/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    });
+    fetchTechs();
+    fetchStats();
+  };
+
+  const updateBookingStatus = async (id: number, status: string) => {
+    await fetch(`/api/admin/bookings/${id}/status`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ status })
+    });
+    fetchBookings();
+    fetchStats();
   };
 
   if (user?.role !== 'admin') return <div className="pt-24 text-center">Access Denied</div>;
@@ -1232,61 +1297,276 @@ const AdminPanel = ({ user }: { user: User | null }) => {
   return (
     <div className="pt-24 pb-12 min-h-screen bg-slate-50">
       <div className="max-w-7xl mx-auto px-4">
-        <h1 className="text-2xl md:text-3xl font-bold mb-8">Admin Dashboard</h1>
-        
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-black text-slate-900">Admin Dashboard</h1>
+            <p className="text-slate-500">Welcome back, {user.name}</p>
+          </div>
+          <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
             {[
-              { label: 'Total Users', value: stats.userCount, icon: User, color: 'text-blue-500' },
-              { label: 'Total Bookings', value: stats.bookingCount, icon: CheckCircle, color: 'text-green-500' },
-              { label: 'Total Revenue', value: `₹${stats.revenue.toFixed(2)}`, icon: IndianRupee, color: 'text-emerald-500' },
-              { label: 'Pending Verification', value: stats.pendingTechs, icon: Shield, color: 'text-orange-500' }
-            ].map((s, i) => (
-              <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <s.icon className={`${s.color} w-8 h-8 mb-4`} />
-                <p className="text-slate-500 text-sm">{s.label}</p>
-                <p className="text-2xl font-bold">{s.value}</p>
-              </div>
+              { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+              { id: 'technicians', label: 'Technicians', icon: Users },
+              { id: 'bookings', label: 'Bookings', icon: Briefcase }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 px-6 py-2 rounded-xl font-bold transition-all ${
+                  activeTab === tab.id ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
             ))}
           </div>
-        )}
-
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h2 className="text-xl font-bold">Technician Management</h2>
-          </div>
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-500 text-sm">
-              <tr>
-                <th className="p-4">Name</th>
-                <th className="p-4">Skills</th>
-                <th className="p-4">District</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {techs.map(t => (
-                <tr key={t.id}>
-                  <td className="p-4 font-medium">{t.name}</td>
-                  <td className="p-4">{t.skills}</td>
-                  <td className="p-4">{t.district}</td>
-                  <td className="p-4">
-                    {t.is_verified ? 
-                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">Verified</span> :
-                      <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">Pending</span>
-                    }
-                  </td>
-                  <td className="p-4">
-                    {!t.is_verified && (
-                      <button onClick={() => verifyTech(t.id)} className="btn-primary text-xs py-1.5 px-3">Verify</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
+        
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            {activeTab === 'analytics' && (
+              <motion.div
+                key="analytics"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                {stats && (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+                    {[
+                      { label: 'Total Users', value: stats.userCount, icon: User, color: 'text-blue-500', bg: 'bg-blue-50' },
+                      { label: 'Total Bookings', value: stats.bookingCount, icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' },
+                      { label: 'Total Revenue', value: `₹${stats.revenue.toFixed(2)}`, icon: IndianRupee, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+                      { label: 'Pending Verification', value: stats.pendingTechs, icon: Shield, color: 'text-orange-500', bg: 'bg-orange-50' }
+                    ].map((s, i) => (
+                      <div key={i} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                        <div className={`${s.bg} w-12 h-12 rounded-2xl flex items-center justify-center mb-4`}>
+                          <s.icon className={`${s.color} w-6 h-6`} />
+                        </div>
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">{s.label}</p>
+                        <p className="text-3xl font-black text-slate-900">{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                    <h3 className="text-xl font-bold mb-6">Recent Activity</h3>
+                    <div className="space-y-4">
+                      {bookings.slice(0, 5).map(b => (
+                        <div key={b.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                          <div className="flex items-center gap-3">
+                            <div className="bg-white p-2 rounded-lg shadow-sm">
+                              <Wrench className="w-4 h-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-900">{b.service_type}</p>
+                              <p className="text-xs text-slate-500">{b.customer_name} booked {b.technician_name}</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-black text-primary">₹{b.negotiated_price}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                    <h3 className="text-xl font-bold mb-6">Platform Health</h3>
+                    <div className="space-y-6">
+                      <div>
+                        <div className="flex justify-between mb-2">
+                          <span className="text-sm font-bold text-slate-600">Verification Rate</span>
+                          <span className="text-sm font-black text-primary">
+                            {techs.length > 0 ? Math.round((techs.filter(t => t.is_verified).length / techs.length) * 100) : 0}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div 
+                            className="bg-primary h-full transition-all duration-1000" 
+                            style={{ width: `${techs.length > 0 ? (techs.filter(t => t.is_verified).length / techs.length) * 100 : 0}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                        <p className="text-sm text-blue-700 font-medium">
+                          <Sparkles className="w-4 h-4 inline mr-2" />
+                          Tip: Verifying more technicians increases platform trust and booking volume.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'technicians' && (
+              <motion.div
+                key="technicians"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden"
+              >
+                <div className="p-8 border-b border-slate-100 flex justify-between items-center">
+                  <h2 className="text-2xl font-black text-slate-900">Technician Management</h2>
+                  <div className="flex gap-2">
+                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+                      {techs.filter(t => t.is_verified).length} Verified
+                    </span>
+                    <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">
+                      {techs.filter(t => !t.is_verified).length} Pending
+                    </span>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                      <tr>
+                        <th className="p-6">Technician</th>
+                        <th className="p-6">Skills</th>
+                        <th className="p-6">District</th>
+                        <th className="p-6">Status</th>
+                        <th className="p-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {techs.map(t => (
+                        <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-6">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-500">
+                                {t.name[0]}
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-900">{t.name}</p>
+                                <p className="text-xs text-slate-500">{t.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-6">
+                            <span className="px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold text-slate-600">
+                              {t.skills}
+                            </span>
+                          </td>
+                          <td className="p-6 text-sm text-slate-600 font-medium">{t.district}</td>
+                          <td className="p-6">
+                            {t.is_verified ? 
+                              <span className="flex items-center gap-1 text-green-600 text-xs font-bold">
+                                <CheckCircle2 className="w-4 h-4" /> Verified
+                              </span> :
+                              <span className="flex items-center gap-1 text-orange-600 text-xs font-bold">
+                                <Clock className="w-4 h-4" /> Pending
+                              </span>
+                            }
+                          </td>
+                          <td className="p-6 text-right">
+                            <div className="flex justify-end gap-2">
+                              {!t.is_verified && (
+                                <button 
+                                  onClick={() => verifyTech(t.id)} 
+                                  className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
+                                  title="Verify"
+                                >
+                                  <CheckCircle2 className="w-5 h-5" />
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => deleteTech(t.id)} 
+                                className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'bookings' && (
+              <motion.div
+                key="bookings"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden"
+              >
+                <div className="p-8 border-b border-slate-100">
+                  <h2 className="text-2xl font-black text-slate-900">Booking & Dispute Management</h2>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                      <tr>
+                        <th className="p-6">Booking ID</th>
+                        <th className="p-6">Service</th>
+                        <th className="p-6">Customer</th>
+                        <th className="p-6">Technician</th>
+                        <th className="p-6">Price</th>
+                        <th className="p-6">Status</th>
+                        <th className="p-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {bookings.map(b => (
+                        <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-6 font-mono text-xs text-slate-400">#BK-{b.id}</td>
+                          <td className="p-6">
+                            <p className="font-bold text-slate-900">{b.service_type}</p>
+                            <p className="text-[10px] text-slate-400">{new Date(b.created_at).toLocaleDateString()}</p>
+                          </td>
+                          <td className="p-6 text-sm font-medium text-slate-700">{b.customer_name}</td>
+                          <td className="p-6 text-sm font-medium text-slate-700">{b.technician_name}</td>
+                          <td className="p-6">
+                            <p className="font-black text-primary">₹{b.negotiated_price}</p>
+                            <p className="text-[10px] text-slate-400">Fee: ₹{b.platform_fee.toFixed(2)}</p>
+                          </td>
+                          <td className="p-6">
+                            <select 
+                              value={b.status}
+                              onChange={(e) => updateBookingStatus(b.id, e.target.value)}
+                              className={`text-xs font-bold px-3 py-1.5 rounded-full border-none focus:ring-2 focus:ring-primary ${
+                                b.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                                b.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                                b.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                b.status === 'disputed' ? 'bg-purple-100 text-purple-700' :
+                                'bg-yellow-100 text-yellow-700'
+                              }`}
+                            >
+                              <option value="negotiating">Negotiating</option>
+                              <option value="confirmed">Confirmed</option>
+                              <option value="completed">Completed</option>
+                              <option value="cancelled">Cancelled</option>
+                              <option value="disputed">Disputed</option>
+                            </select>
+                          </td>
+                          <td className="p-6 text-right">
+                            <button 
+                              onClick={() => navigate(`/negotiate/${b.id}`)}
+                              className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
+                              title="View Chat"
+                            >
+                              <MessageSquare className="w-5 h-5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
       </div>
     </div>
   );

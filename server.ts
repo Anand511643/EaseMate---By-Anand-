@@ -104,8 +104,12 @@ districts.forEach(district => {
   if (count < 2) {
     // Seed Core Technicians
     coreServices.forEach((service, idx) => {
-      const name = techNames[Math.floor(Math.random() * techNames.length)];
       const email = `${district.toLowerCase().replace(' ', '')}_${service.toLowerCase().replace(' ', '')}_${idx}@fixmate.com`;
+      
+      const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+      if (existingUser) return;
+
+      const name = techNames[Math.floor(Math.random() * techNames.length)];
       const hashedPassword = bcrypt.hashSync('tech123', 10);
       
       const userResult = db.prepare('INSERT INTO users (name, email, password, role, phone, location, district) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
@@ -138,8 +142,12 @@ districts.forEach(district => {
 
     // Seed Standard Technicians
     standardServices.forEach((service, idx) => {
-      const name = techNames[Math.floor(Math.random() * techNames.length)];
       const email = `${district.toLowerCase().replace(' ', '')}_std_${service.toLowerCase().replace(' ', '')}_${idx}@fixmate.com`;
+      
+      const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+      if (existingUser) return;
+
+      const name = techNames[Math.floor(Math.random() * techNames.length)];
       const hashedPassword = bcrypt.hashSync('tech123', 10);
       
       const userResult = db.prepare('INSERT INTO users (name, email, password, role, phone, location, district) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
@@ -201,6 +209,9 @@ const calculatePlatformFee = (price: number) => {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Ensure admin user has correct role
+  db.prepare('UPDATE users SET role = "admin" WHERE email = ?').run(adminEmail);
 
   // Ensure bookings table has payment columns
   const migrations = [
@@ -563,6 +574,32 @@ async function startServer() {
   app.post('/api/admin/technicians/:id/verify', authenticate, (req: any, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
     db.prepare('UPDATE technicians SET is_verified = 1 WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete('/api/admin/technicians/:id', authenticate, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    db.prepare('DELETE FROM technicians WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.get('/api/admin/bookings', authenticate, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const bookings = db.prepare(`
+      SELECT b.*, u.name as customer_name, t_u.name as technician_name, t.district
+      FROM bookings b
+      JOIN users u ON b.customer_id = u.id
+      JOIN technicians t ON b.technician_id = t.id
+      JOIN users t_u ON t.user_id = t_u.id
+      ORDER BY b.created_at DESC
+    `).all();
+    res.json(bookings);
+  });
+
+  app.post('/api/admin/bookings/:id/status', authenticate, (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const { status } = req.body;
+    db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, req.params.id);
     res.json({ success: true });
   });
 
