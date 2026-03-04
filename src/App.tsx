@@ -168,6 +168,7 @@ const Footer = () => (
           <li><Link to="/register-tech" className="hover:text-primary">Join as Technician</Link></li>
           <li><Link to="/privacy" className="hover:text-primary">Privacy Policy</Link></li>
           <li><Link to="/about" className="hover:text-primary">About Us</Link></li>
+          <li><Link to="/dispute" className="hover:text-primary font-medium text-red-400">Register your dispute</Link></li>
         </ul>
       </div>
       <div>
@@ -183,6 +184,144 @@ const Footer = () => (
 );
 
 // --- Pages ---
+
+const DisputePage = () => {
+  const [bookingCode, setBookingCode] = useState('');
+  const [description, setDescription] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    // Simulate API call
+    setTimeout(() => {
+      setLoading(false);
+      setSubmitted(true);
+    }, 1500);
+  };
+
+  if (submitted) {
+    return (
+      <div className="pt-32 pb-20 min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white p-12 rounded-[3rem] shadow-xl max-w-md text-center"
+        >
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-10 h-10 text-green-600" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 mb-4">Dispute Registered</h2>
+          <p className="text-slate-500 mb-8">Your dispute has been successfully submitted. Our legal team will review the details and contact you within 48-72 hours.</p>
+          <Link to="/" className="btn-primary px-8 py-3">Back to Home</Link>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-32 pb-20 min-h-screen bg-slate-50">
+      <div className="max-w-3xl mx-auto px-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-8 md:p-12 rounded-[3rem] shadow-xl border border-slate-100"
+        >
+          <div className="flex items-center gap-4 mb-8">
+            <div className="bg-red-50 p-4 rounded-2xl">
+              <AlertCircle className="w-8 h-8 text-red-500" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-slate-900">Register Your Dispute</h1>
+              <p className="text-slate-500">Official Grievance Redressal Portal</p>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 text-slate-300 p-6 rounded-2xl mb-8 text-sm leading-relaxed border-l-4 border-primary">
+            <p className="font-bold text-white mb-2 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-primary" /> Legal Disclaimer & Policy
+            </p>
+            All disputes submitted through this portal will be handled properly, fairly, and legally according to the prevailing laws of the land. FixMate is committed to a transparent resolution process. Any false claims or fraudulent submissions will be subject to legal action under the Information Technology Act and relevant sections of the Indian Penal Code.
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-black text-slate-700 uppercase tracking-widest mb-2">Booking Code / ID</label>
+              <input 
+                type="text" 
+                required
+                placeholder="e.g. BK-A1B2C3D4"
+                className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-primary font-mono"
+                value={bookingCode}
+                onChange={e => setBookingCode(e.target.value)}
+              />
+              <p className="text-[10px] text-slate-400 mt-2 px-2 italic">Required to verify the authenticity of your claim.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-black text-slate-700 uppercase tracking-widest mb-2">Dispute Details (Written)</label>
+              <textarea 
+                required
+                rows={5}
+                placeholder="Please describe the issue in detail..."
+                className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-primary resize-none"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-black text-slate-700 uppercase tracking-widest mb-2">Attach Evidence (Photo)</label>
+              <div className="relative group">
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  className="hidden" 
+                  id="dispute-photo"
+                  onChange={e => setFile(e.target.files?.[0] || null)}
+                />
+                <label 
+                  htmlFor="dispute-photo"
+                  className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary hover:bg-slate-50 transition-all"
+                >
+                  {file ? (
+                    <div className="flex items-center gap-3 text-primary font-bold">
+                      <ImageIcon className="w-6 h-6" />
+                      {file.name}
+                    </div>
+                  ) : (
+                    <>
+                      <Paperclip className="w-8 h-8 text-slate-400 mb-2" />
+                      <span className="text-slate-500 font-medium">Click to upload photo evidence</span>
+                      <span className="text-[10px] text-slate-400 mt-1">JPG, PNG up to 5MB</span>
+                    </>
+                  )}
+                </label>
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full btn-primary py-5 rounded-2xl text-lg font-black shadow-xl shadow-primary/20 hover:shadow-primary/30 transition-all flex items-center justify-center gap-3"
+            >
+              {loading ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                <>
+                  <Rocket className="w-6 h-6" />
+                  Submit Official Dispute
+                </>
+              )}
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    </div>
+  );
+};
 
 const HomePage = () => {
   return (
@@ -987,7 +1126,7 @@ const NegotiatePage = ({ user }: { user: User | null }) => {
                 </h2>
                 <div className="flex items-center gap-2 text-[10px] sm:text-xs text-slate-400 font-medium">
                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                  {booking.service_type} • {booking.district}
+                  {booking.service_type} • {booking.district} • {booking.booking_number || `#BK-${booking.id}`}
                 </div>
               </div>
             </div>
@@ -1302,7 +1441,7 @@ const AdminPanel = ({ user }: { user: User | null }) => {
             <h1 className="text-3xl font-black text-slate-900">Admin Dashboard</h1>
             <p className="text-slate-500">Welcome back, {user.name}</p>
           </div>
-          <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
+          <div className="flex w-full md:w-auto bg-white p-1 rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             {[
               { id: 'analytics', label: 'Analytics', icon: BarChart3 },
               { id: 'technicians', label: 'Technicians', icon: Users },
@@ -1311,12 +1450,12 @@ const AdminPanel = ({ user }: { user: User | null }) => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-6 py-2 rounded-xl font-bold transition-all ${
+                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-3 md:px-6 py-2.5 rounded-xl font-bold transition-all whitespace-nowrap ${
                   activeTab === tab.id ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
-                {tab.label}
+                <span className="text-xs md:text-sm">{tab.label}</span>
               </button>
             ))}
           </div>
@@ -1507,34 +1646,34 @@ const AdminPanel = ({ user }: { user: User | null }) => {
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
                       <tr>
-                        <th className="p-6">Booking ID</th>
-                        <th className="p-6">Service</th>
-                        <th className="p-6">Customer</th>
-                        <th className="p-6">Technician</th>
-                        <th className="p-6">Price</th>
-                        <th className="p-6">Status</th>
-                        <th className="p-6 text-right">Actions</th>
+                        <th className="px-6 py-4">Booking ID</th>
+                        <th className="px-6 py-4">Service</th>
+                        <th className="px-6 py-4">Customer</th>
+                        <th className="px-6 py-4">Technician</th>
+                        <th className="px-6 py-4 text-right">Price</th>
+                        <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {bookings.map(b => (
                         <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-6 font-mono text-xs text-slate-400">#BK-{b.id}</td>
-                          <td className="p-6">
-                            <p className="font-bold text-slate-900">{b.service_type}</p>
+                          <td className="px-6 py-4 align-middle font-mono text-xs text-slate-400 whitespace-nowrap">{b.booking_number || `#BK-${b.id}`}</td>
+                          <td className="px-6 py-4 align-middle">
+                            <p className="font-bold text-slate-900 whitespace-nowrap">{b.service_type}</p>
                             <p className="text-[10px] text-slate-400">{new Date(b.created_at).toLocaleDateString()}</p>
                           </td>
-                          <td className="p-6 text-sm font-medium text-slate-700">{b.customer_name}</td>
-                          <td className="p-6 text-sm font-medium text-slate-700">{b.technician_name}</td>
-                          <td className="p-6">
+                          <td className="px-6 py-4 align-middle text-sm font-medium text-slate-700 whitespace-nowrap">{b.customer_name}</td>
+                          <td className="px-6 py-4 align-middle text-sm font-medium text-slate-700 whitespace-nowrap">{b.technician_name}</td>
+                          <td className="px-6 py-4 align-middle text-right">
                             <p className="font-black text-primary">₹{b.negotiated_price}</p>
                             <p className="text-[10px] text-slate-400">Fee: ₹{b.platform_fee.toFixed(2)}</p>
                           </td>
-                          <td className="p-6">
+                          <td className="px-6 py-4 align-middle text-center">
                             <select 
                               value={b.status}
                               onChange={(e) => updateBookingStatus(b.id, e.target.value)}
-                              className={`text-xs font-bold px-3 py-1.5 rounded-full border-none focus:ring-2 focus:ring-primary ${
+                              className={`text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full border-none focus:ring-2 focus:ring-primary cursor-pointer appearance-none text-center ${
                                 b.status === 'confirmed' ? 'bg-green-100 text-green-700' :
                                 b.status === 'completed' ? 'bg-blue-100 text-blue-700' :
                                 b.status === 'cancelled' ? 'bg-red-100 text-red-700' :
@@ -1549,13 +1688,13 @@ const AdminPanel = ({ user }: { user: User | null }) => {
                               <option value="disputed">Disputed</option>
                             </select>
                           </td>
-                          <td className="p-6 text-right">
+                          <td className="px-6 py-4 align-middle text-right">
                             <button 
                               onClick={() => navigate(`/negotiate/${b.id}`)}
-                              className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
+                              className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors inline-flex"
                               title="View Chat"
                             >
-                              <MessageSquare className="w-5 h-5" />
+                              <MessageSquare className="w-4 h-4" />
                             </button>
                           </td>
                         </tr>
@@ -1707,7 +1846,7 @@ const PrivacyPolicy = () => (
   </div>
 );
 
-const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: User, t: string) => void }) => {
+ const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: User, t: string) => void }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -1716,28 +1855,38 @@ const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: Us
   const [district, setDistrict] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [role, setRole] = useState<'customer' | 'technician'>('customer');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const districts = ['Patna', 'Purnia', 'Darbhanga', 'Sitamarhi', 'Madhubani', 'Madhepura', 'Katihar', 'Saharsa', 'East Champaran', 'West Champaran', 'Begusarai', 'Barauni'];
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const endpoint = type === 'login' ? '/api/auth/login' : '/api/auth/signup';
-    const body = type === 'login' 
-      ? { email, password } 
-      : { name, email, password, role, phone, location, district, id_number: idNumber };
-    
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    if (data.token) {
-      onLogin(data.user, data.token);
-      navigate('/');
-    } else {
-      alert(data.error);
+    setLoading(true);
+    try {
+      const endpoint = type === 'login' ? '/api/auth/login' : '/api/auth/signup';
+      const body = type === 'login' 
+        ? { email, password } 
+        : { name, email, password, role, phone, location, district, id_number: idNumber };
+      
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      
+      const data = await res.json();
+      if (res.ok && data.token) {
+        onLogin(data.user, data.token);
+        navigate('/');
+      } else {
+        alert(data.error || 'Authentication failed');
+      }
+    } catch (err: any) {
+      console.error('Auth Error:', err);
+      alert('Network error or server is down. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1808,8 +1957,12 @@ const AuthPage = ({ type, onLogin }: { type: 'login' | 'signup'; onLogin: (u: Us
             className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-primary"
             value={password} onChange={e => setPassword(e.target.value)}
           />
-          <button type="submit" className="w-full btn-primary py-3 mt-4">
-            {type === 'login' ? 'Login' : 'Sign Up'}
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full btn-primary py-3 mt-4 flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (type === 'login' ? 'Login' : 'Sign Up')}
           </button>
         </form>
         <p className="mt-6 text-center text-slate-500">
@@ -1899,6 +2052,9 @@ const BookingHistoryPage = ({ user }: { user: User | null }) => {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="text-lg font-bold text-slate-900">{booking.service_type}</h3>
+                        <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                          {booking.booking_number || `#BK-${booking.id}`}
+                        </span>
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
                           booking.status === 'confirmed' ? 'bg-green-100 text-green-600' : 
                           booking.status === 'completed' ? 'bg-blue-100 text-blue-600' :
@@ -1978,6 +2134,7 @@ export default function App() {
             <Route path="/book" element={<BookingPage user={user} />} />
             <Route path="/negotiate/:id" element={<NegotiatePage user={user} />} />
             <Route path="/admin" element={<AdminPanel user={user} />} />
+            <Route path="/dispute" element={<DisputePage />} />
             <Route path="/bookings" element={<BookingHistoryPage user={user} />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/about" element={<AboutPage />} />
