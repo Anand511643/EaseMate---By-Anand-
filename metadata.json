@@ -1,5 +1,5 @@
 {
-  "name": "FixMate - Smart Technician Booking",
+  "name": "EaseMate - Smart Technician Booking",
   "description": "A professional platform connecting Bihar households with verified technicians featuring a unique bargaining system.",
   "requestFramePermissions": [
     "geolocation"

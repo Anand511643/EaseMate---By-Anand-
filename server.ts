@@ -12,12 +12,12 @@ import 'dotenv/config';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fixmate-super-secret-key-2024';
+const JWT_SECRET = process.env.JWT_SECRET || 'easemate-v1-secret-key-2026';
 
 async function startServer() {
   try {
-    console.log('Starting FixMate Server...');
-    const db = new Database('fixmate.db');
+    console.log('Starting EaseMate Server...');
+    const db = new Database('easemate.db');
     db.pragma('foreign_keys = ON');
 
     // Initialize Database
@@ -186,7 +186,7 @@ async function startServer() {
         const count = db.prepare('SELECT COUNT(*) as count FROM users JOIN technicians ON users.id = technicians.user_id WHERE technicians.district = ?').get(district).count;
         if (count < 2) {
           coreServices.forEach((service, idx) => {
-            const email = `${district.toLowerCase().replace(' ', '')}_${service.toLowerCase().replace(' ', '')}_${idx}@fixmate.com`;
+            const email = `${district.toLowerCase().replace(' ', '')}_${service.toLowerCase().replace(' ', '')}_${idx}@easemate.com`;
             const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
             if (existing) return;
             
@@ -244,12 +244,12 @@ async function startServer() {
       }
     ];
 
-    const fixmateShop = db.prepare('SELECT id FROM shops WHERE shop_name = ?').get('FixMate Official Store');
-    if (!fixmateShop) {
+    const easemateShop = db.prepare('SELECT id FROM shops WHERE shop_name = ?').get('EaseMate Official Store');
+    if (!easemateShop) {
       const admin = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');
       if (admin) {
         const shopResult = db.prepare('INSERT INTO shops (user_id, shop_name, address, district) VALUES (?, ?, ?, ?)').run(
-          admin.id, 'FixMate Official Store', 'IT Hub Patna, Bihar', 'Patna'
+          admin.id, 'EaseMate Official Store', 'IT Hub Patna, Bihar', 'Patna'
         );
         const shopId = shopResult.lastInsertRowid;
         initialProducts.forEach(p => {
@@ -337,7 +337,7 @@ async function startServer() {
         // Verify user still exists in DB to handle stale tokens after DB resets
         const user = db.prepare('SELECT id, role, email FROM users WHERE id = ?').get(decoded.id);
         if (!user) {
-          console.error(`Auth failed: User ID ${decoded.id} from token not found in database`);
+          console.warn(`Auth failed: User ID ${decoded.id} from token not found in database (Stale Session)`);
           return res.status(401).json({ error: 'User account not found. Please login again.' });
         }
         
@@ -787,7 +787,7 @@ Customer: ${booking.customer_name} (${booking.customer_phone})`;
     }
 
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`FixMate Server running on http://localhost:${PORT}`);
+      console.log(`EaseMate Server running on http://localhost:${PORT}`);
     });
   } catch (err) {
     console.error('CRITICAL: Failed to start server:', err);

@@ -219,7 +219,7 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
               <Wrench className="text-white w-6 h-6" />
             </div>
             <span className="text-xl md:text-2xl font-bold tracking-tight text-slate-900">
-              Fix<span className="text-primary">Mate</span>
+              Ease<span className="text-primary">Mate</span>
             </span>
           </Link>
 
@@ -309,7 +309,7 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
             <Link to="/register-tech" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Become Technician</Link>
             <Link to="/list-shop" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Advertise Your Shop</Link>
             <Link to="/privacy" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Privacy Policy</Link>
-            <Link to="/about" onClick={() => setIsOpen(false)} className="block text-lg font-medium">About FixMate</Link>
+            <Link to="/about" onClick={() => setIsOpen(false)} className="block text-lg font-medium">About EaseMate</Link>
             {user && (
               <>
                 {user.role === 'admin' && (
@@ -339,7 +339,7 @@ const Footer = () => (
       <div>
         <div className="flex items-center gap-2 mb-6">
           <Wrench className="text-primary w-6 h-6" />
-          <span className="text-2xl font-bold">FixMate</span>
+          <span className="text-2xl font-bold">EaseMate</span>
         </div>
         <p className="text-slate-400">
           IT Hub Patna Bihar 800001<br />
@@ -358,7 +358,7 @@ const Footer = () => (
       </div>
       <div>
         <h4 className="text-lg font-bold mb-6">Contact Us</h4>
-        <p className="text-slate-400">Email: support@fixmate.in</p>
+        <p className="text-slate-400">Email: support@easemate.in</p>
         <p className="text-slate-400">Phone: +91 9142262449</p>
       </div>
     </div>
@@ -428,7 +428,7 @@ const DisputePage = () => {
             <p className="font-bold text-white mb-2 flex items-center gap-2">
               <Shield className="w-4 h-4 text-primary" /> Legal Disclaimer & Policy
             </p>
-            All disputes submitted through this portal will be handled properly, fairly, and legally according to the prevailing laws of the land. FixMate is committed to a transparent resolution process. Any false claims or fraudulent submissions will be subject to legal action under the Information Technology Act and relevant sections of the Indian Penal Code.
+            All disputes submitted through this portal will be handled properly, fairly, and legally according to the prevailing laws of the land. EaseMate is committed to a transparent resolution process. Any false claims or fraudulent submissions will be subject to legal action under the Information Technology Act and relevant sections of the Indian Penal Code.
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -532,7 +532,7 @@ const HomePage = () => {
               #1 Service Platform in Bihar
             </span>
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-slate-900 leading-tight mb-6">
-              FixMate – Your <span className="text-primary">Smart Technician</span> at Your Doorstep
+              EaseMate – Your <span className="text-primary">Smart Technician</span> at Your Doorstep
             </h1>
             <p className="text-lg md:text-xl text-slate-600 mb-10 leading-relaxed">
               Connect with verified local electricians, plumbers, and more. 
@@ -557,7 +557,7 @@ const HomePage = () => {
       <section className="py-24 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-900 mb-4">Why Choose FixMate?</h2>
+            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-900 mb-4">Why Choose EaseMate?</h2>
             <p className="text-slate-600">The smartest way to get things fixed in your home.</p>
           </div>
 
@@ -587,7 +587,7 @@ const HomePage = () => {
             <h3 className="text-xl font-bold text-center mb-10 text-slate-400 uppercase tracking-widest">What Our Customers Say</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {[
-                { name: "Amit Singh", city: "Patna", review: "FixMate made it so easy to find an electrician. The bargaining feature is a game changer! I saved ₹200 on my AC repair.", rating: 5 },
+                { name: "Amit Singh", city: "Patna", review: "EaseMate made it so easy to find an electrician. The bargaining feature is a game changer! I saved ₹200 on my AC repair.", rating: 5 },
                 { name: "Priya Kumari", city: "Purnia", review: "Very professional service. The technician arrived on time and was very skilled. Highly recommended for home services in Bihar.", rating: 5 },
                 { name: "Rajesh Kumar", city: "Darbhanga", review: "The AI cost predictor gave me a very accurate estimate. I felt confident negotiating with the technician. Great platform!", rating: 4 }
               ].map((r, i) => (
@@ -1034,14 +1034,14 @@ const CheckoutModal = ({ booking, onComplete, onClose }: { booking: any, onCompl
         key: 'rzp_test_dummy', // Dummy key for demo
         amount: Math.round((booking.negotiated_price + (booking.platform_fee || 0)) * 100),
         currency: 'INR',
-        name: 'FixMate Bihar',
+        name: 'EaseMate Bihar',
         description: `Payment for ${booking.service_type}`,
         handler: async () => {
           await onComplete('online');
         },
         prefill: {
           name: booking.customer_name,
-          email: 'customer@fixmate.in',
+          email: 'customer@easemate.in',
           contact: '9142262449'
         },
         theme: { color: '#0F172A' }
@@ -1075,7 +1075,7 @@ const CheckoutModal = ({ booking, onComplete, onClose }: { booking: any, onCompl
             </div>
             <h3 className="text-2xl font-bold tracking-tight">Secure Checkout</h3>
           </div>
-          <p className="text-slate-400 text-sm">Finalize your booking with FixMate Bihar</p>
+          <p className="text-slate-400 text-sm">Finalize your booking with EaseMate Bihar</p>
         </div>
         
         <div className="p-8 space-y-8">
@@ -1093,7 +1093,7 @@ const CheckoutModal = ({ booking, onComplete, onClose }: { booking: any, onCompl
             </div>
             <div className="flex justify-between items-center text-slate-600">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">FixMate Insurance</span>
+                <span className="text-sm font-medium">EaseMate Insurance</span>
                 <span className="bg-green-100 text-green-700 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">Covered</span>
               </div>
               <span className="text-green-600 font-bold">₹0.00</span>
@@ -2154,7 +2154,7 @@ const AboutPage = () => (
                   The Mission
                 </h2>
                 <p className="text-xl leading-relaxed text-slate-600 font-medium">
-                  FixMate is a technology-driven ecosystem designed to formalize the unorganized service sector in India, starting with the vibrant state of Bihar. We bridge the gap between skilled local technicians and households through a transparent, trust-based digital marketplace.
+                  EaseMate is a technology-driven ecosystem designed to formalize the unorganized service sector in India, starting with the vibrant state of Bihar. We bridge the gap between skilled local technicians and households through a transparent, trust-based digital marketplace.
                 </p>
                 <p className="text-lg leading-relaxed text-slate-500">
                   Our platform addresses the critical "Trust Deficit" in the home services industry by providing rigorous district-level verification, standardized safety protocols, and a unique digital bargaining interface that respects local market dynamics.
@@ -2232,7 +2232,7 @@ const AboutPage = () => (
                 </div>
                 <h3 className="text-2xl font-black mb-6">Founder's Vision</h3>
                 <p className="text-xl italic font-medium leading-relaxed opacity-95 mb-10">
-                  "FixMate is more than an app; it's a movement to bring dignity, technology, and prosperity to the skilled hands that build our nation."
+                  "EaseMate is more than an app; it's a movement to bring dignity, technology, and prosperity to the skilled hands that build our nation."
                 </p>
                 <div className="pt-8 border-t border-white/20">
                   <p className="font-black text-2xl">Anand Amrit Raj</p>
@@ -2291,7 +2291,7 @@ const PrivacyPolicy = () => (
             1. Professional Conduct
           </h2>
           <p className="text-slate-600 leading-relaxed">
-            FixMate enforces a stringent code of conduct. We maintain a zero-tolerance policy regarding harassment, fraudulent activity, and unprofessional behavior. All users—both customers and service providers—are legally bound to maintain professional decorum during all platform-facilitated interactions.
+            EaseMate enforces a stringent code of conduct. We maintain a zero-tolerance policy regarding harassment, fraudulent activity, and unprofessional behavior. All users—both customers and service providers—are legally bound to maintain professional decorum during all platform-facilitated interactions.
           </p>
         </section>
 
@@ -2329,7 +2329,7 @@ const PrivacyPolicy = () => (
           <div className="space-y-4 text-slate-300 leading-relaxed">
             <p className="font-bold text-white">Important Clause regarding Insurance Coverage:</p>
             <p>
-              FixMate provides a Work Protection Insurance of <span className="text-primary font-bold">up to ₹5,000</span>. This coverage is strictly subject to the following conditions:
+              EaseMate provides a Work Protection Insurance of <span className="text-primary font-bold">up to ₹5,000</span>. This coverage is strictly subject to the following conditions:
             </p>
             <ul className="list-disc pl-6 space-y-3">
               <li>
@@ -2339,10 +2339,10 @@ const PrivacyPolicy = () => (
                 <strong className="text-white">Valuation-Based:</strong> The actual insurance amount disbursed will be directly proportional to the <em className="text-white">actual damage incurred</em> and the <em className="text-white">market cost of the product</em> or part involved.
               </li>
               <li>
-                <strong className="text-white">Mandatory Inspection:</strong> All claims will undergo a rigorous physical and technical inspection by the <em className="text-primary">FixMate Internal Audit Team</em> and authorized senior technicians to verify the cause and extent of damage.
+                <strong className="text-white">Mandatory Inspection:</strong> All claims will undergo a rigorous physical and technical inspection by the <em className="text-primary">EaseMate Internal Audit Team</em> and authorized senior technicians to verify the cause and extent of damage.
               </li>
               <li>
-                <strong className="text-white">Verified Bookings Only:</strong> Insurance is only applicable for bookings confirmed and closed through the FixMate platform.
+                <strong className="text-white">Verified Bookings Only:</strong> Insurance is only applicable for bookings confirmed and closed through the EaseMate platform.
               </li>
             </ul>
           </div>
@@ -2366,7 +2366,7 @@ const PrivacyPolicy = () => (
           </h2>
           <div className="space-y-4 text-slate-600 leading-relaxed">
             <p>
-              FixMate is committed to protecting your personal data. We employ industry-standard encryption and security measures to safeguard your information.
+              EaseMate is committed to protecting your personal data. We employ industry-standard encryption and security measures to safeguard your information.
             </p>
             <ul className="list-disc pl-6 space-y-2">
               <li><strong className="text-slate-900">Data Collection:</strong> We collect only necessary information required for service facilitation, including name, contact details, and location.</li>
@@ -2704,7 +2704,7 @@ const ShopPage = () => {
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
-            <h1 className="text-4xl font-black text-slate-900 mb-2">FixMate Shop</h1>
+            <h1 className="text-4xl font-black text-slate-900 mb-2">EaseMate Shop</h1>
             <p className="text-slate-500 font-medium">Buy genuine spare parts and tools from verified local shops in Bihar.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
@@ -3053,7 +3053,7 @@ const ShopListingPage = ({ user }: { user: User | null }) => {
               </div>
               <div>
                 <h1 className="text-3xl font-black text-slate-900">List Your Shop</h1>
-                <p className="text-slate-500 font-medium">Start selling your products on FixMate Marketplace.</p>
+                <p className="text-slate-500 font-medium">Start selling your products on EaseMate Marketplace.</p>
               </div>
             </div>
 
@@ -3822,11 +3822,29 @@ export default function App() {
       if (savedUser) setUser(JSON.parse(savedUser));
     } catch (e) {
       console.error('Failed to parse user from storage', e);
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
-      sessionStorage.removeItem('user');
-      sessionStorage.removeItem('token');
+      handleLogout();
     }
+  }, []);
+
+  // Verify session on mount to clear stale tokens (e.g. after DB reset)
+  useEffect(() => {
+    const verifySession = async () => {
+      const token = getToken();
+      if (!token) return;
+
+      try {
+        const res = await fetch('/api/users/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.status === 401) {
+          console.warn('Session invalid or user not found, logging out...');
+          handleLogout();
+        }
+      } catch (err) {
+        console.error('Session verification failed:', err);
+      }
+    };
+    verifySession();
   }, []);
 
   const handleLogin = (u: User, token: string) => {
