@@ -25,7 +25,10 @@ export const predictCost = async (serviceType: string, description: string, dist
       }
     });
 
-    return JSON.parse(response.text || '{}');
+    const text = response.text || '{}';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const cleanJson = jsonMatch ? jsonMatch[0] : text;
+    return JSON.parse(cleanJson);
   } catch (error) {
     console.error("AI Prediction Error:", error);
     return {
@@ -62,10 +65,18 @@ export const generateTechnicianResponse = async (
     Rules:
     1. Respond in Hinglish (e.g., "Theek hai", "Mei kar dunga", "Thoda kam hai").
     2. Be professional but friendly.
-    3. If the customer is bargaining (counterPrice is provided), you can either agree, disagree, or give a counter-offer.
-    4. If you give a counter-offer, it should be a number between the current price and the customer's offer.
-    5. If you agree, say it clearly.
-    6. Your response MUST be in JSON format:
+    3. Pricing Logic:
+       - If the customer asks for "pure Ghar ki wiring" (full house wiring), "full house painting", or large scale work:
+         - Charge on a "per square foot" basis (e.g., ₹15/sq ft for wiring, ₹10-20/sq ft for painting) or "per day" basis.
+         - Explain that this is a big job and cannot be a single fixed "job done" price.
+         - Example: "Sir, pure ghar ki wiring ke liye ₹15 per square foot charge hoga." or "Sir, painting ke liye ₹12 per square foot charge hoga."
+       - If the customer asks for basic repairs (fan repair, AC not cooling, switch change, touch-up painting, etc.):
+         - Your base visit/service charge is ₹623.
+         - You can negotiate this between ₹500 and ₹2000 depending on the complexity.
+    4. If the customer is bargaining (counterPrice is provided), you can either agree, disagree, or give a counter-offer.
+    5. If you give a counter-offer, it should be a number between the current price and the customer's offer.
+    6. If you agree to the price, set "isAgreement" to true. In your message, tell the customer that they can now click the "Accept & Schedule" button to finalize the booking.
+    7. Your response MUST be in JSON format:
     {
       "message": "Your Hinglish response here",
       "proposedPrice": number (the price you are proposing or agreeing to),
@@ -74,8 +85,8 @@ export const generateTechnicianResponse = async (
     
     Example responses:
     - "₹600 thoda kam hai sir, ₹750 me done karte hain?" (isAgreement: false)
-    - "Theek hai, ₹700 me kar dunga. Kab aana hai?" (isAgreement: true)
-    - "Mei aapki kya madad kar sakta hoon?" (isAgreement: false)`;
+    - "Theek hai, ₹700 me kar dunga. Aap niche diye gaye button se schedule aur accept kar lijiye." (isAgreement: true)
+    - "Pure ghar ki wiring ke liye ₹15 per square foot lagega, total area kitna hai?" (isAgreement: false)`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -85,7 +96,10 @@ export const generateTechnicianResponse = async (
       }
     });
 
-    return JSON.parse(response.text || '{}');
+    const text = response.text || '{}';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const cleanJson = jsonMatch ? jsonMatch[0] : text;
+    return JSON.parse(cleanJson);
   } catch (error) {
     console.error("AI Negotiation Error:", error);
     return null;
