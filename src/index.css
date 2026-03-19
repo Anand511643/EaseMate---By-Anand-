@@ -4,8 +4,8 @@
 @theme {
   --font-sans: "Rubik", ui-sans-serif, system-ui, sans-serif;
   
-  --color-primary: #10b981; /* Emerald 500 */
-  --color-secondary: #3b82f6; /* Blue 500 */
+  --color-primary: #0ea5e9; /* Sky 500 - matches the blue in screenshot */
+  --color-secondary: #10b981; /* Emerald 500 - matches the green in screenshot */
 }
 
 @layer base {
@@ -22,11 +22,11 @@
 }
 
 .btn-primary {
-  @apply bg-primary hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-medium transition-all active:scale-95 inline-flex items-center justify-center gap-2;
+  @apply bg-primary hover:bg-sky-600 text-white px-5 py-2.5 rounded-xl font-medium transition-all active:scale-95 inline-flex items-center justify-center gap-2;
 }
 
 .btn-secondary {
-  @apply bg-secondary hover:bg-blue-600 text-white px-5 py-2.5 rounded-xl font-medium transition-all active:scale-95 inline-flex items-center justify-center gap-2;
+  @apply bg-secondary hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-medium transition-all active:scale-95 inline-flex items-center justify-center gap-2;
 }
 
 .btn-outline {

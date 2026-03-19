@@ -325,8 +325,15 @@ async function startServer() {
     // Auth Middleware
     const authenticate = (req: any, res: any, next: any) => {
       const authHeader = req.headers.authorization;
-      if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      
       const token = authHeader.split(' ')[1];
+      if (!token || token === 'null' || token === 'undefined') {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
       try {
         const decoded = jwt.verify(token, JWT_SECRET) as any;
         
@@ -688,6 +695,18 @@ Customer: ${booking.customer_name} (${booking.customer_phone})`;
     app.get('/api/admin/technicians', authenticate, (req: any, res) => {
       if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
       res.json(db.prepare('SELECT t.*, u.name, u.email, u.phone FROM technicians t JOIN users u ON t.user_id = u.id').all());
+    });
+
+    app.get('/api/admin/bookings', authenticate, (req: any, res) => {
+      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+      const query = `
+        SELECT b.*, u.name as customer_name, tu.name as technician_name 
+        FROM bookings b 
+        JOIN users u ON b.customer_id = u.id 
+        JOIN users tu ON b.technician_id = tu.id
+        ORDER BY b.created_at DESC
+      `;
+      res.json(db.prepare(query).all());
     });
 
     app.post('/api/admin/technicians/:id/verify', authenticate, (req: any, res) => {

@@ -39,7 +39,9 @@ import {
   Tag,
   Plus,
   Package,
-  Bell
+  Bell,
+  Mail,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { predictCost, generateTechnicianResponse } from './services/geminiService';
@@ -66,9 +68,7 @@ interface Notification {
 }
 
 const getToken = () => {
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-  console.log('getToken called, token exists:', !!token);
-  return token;
+  return localStorage.getItem('token') || sessionStorage.getItem('token');
 };
 
 interface Technician {
@@ -92,16 +92,22 @@ const NotificationsDropdown = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = async () => {
+    const token = getToken();
+    if (!token || token === 'null' || token === 'undefined') return;
+
     try {
       const res = await fetch('/api/notifications', {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
         setNotifications(data);
       }
     } catch (err) {
-      console.error('Failed to fetch notifications', err);
+      // Only log if it's not a common network interruption
+      if (err instanceof Error && err.name !== 'AbortError') {
+        console.error('Failed to fetch notifications', err);
+      }
     }
   };
 
@@ -215,11 +221,11 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <Link to="/" className="flex items-center gap-2 shrink-0">
-            <div className="bg-primary p-2 rounded-lg">
+            <div className="bg-primary p-2 rounded-xl">
               <Wrench className="text-white w-6 h-6" />
             </div>
-            <span className="text-xl md:text-2xl font-bold tracking-tight text-slate-900">
-              Ease<span className="text-primary">Mate</span>
+            <span className="text-xl md:text-2xl font-black tracking-tight text-slate-900">
+              EaseMate
             </span>
           </Link>
 
@@ -287,45 +293,64 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="md:hidden bg-white border-b border-slate-100 px-4 py-6 space-y-4"
+            className="md:hidden bg-white border-b border-slate-100 px-4 py-8 space-y-6"
           >
-            {/* Mobile Search */}
-            <form onSubmit={handleSearch} className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <input 
-                type="text" 
-                placeholder="Search technicians..." 
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-primary"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </form>
-
-            <Link to="/" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Home</Link>
-            <Link to="/shop" onClick={() => setIsOpen(false)} className="block text-lg font-medium flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-primary" /> Shop / Marketplace
+            <Link to="/" onClick={() => setIsOpen(false)} className="block text-xl font-medium text-slate-700">Home</Link>
+            <Link to="/book" onClick={() => setIsOpen(false)} className="block text-xl font-medium text-slate-700">Book a Technician</Link>
+            <Link to="/register-tech" onClick={() => setIsOpen(false)} className="block text-xl font-medium text-slate-700">Become a Technician</Link>
+            <Link to="/about" onClick={() => setIsOpen(false)} className="block text-xl font-medium text-slate-700">About</Link>
+            <Link 
+              to="/shop" 
+              onClick={() => setIsOpen(false)} 
+              className={`block text-xl font-bold px-4 py-3 rounded-2xl ${window.location.pathname === '/shop' ? 'bg-sky-50 text-primary' : 'text-primary'}`}
+            >
+              Shop
             </Link>
-            <Link to="/book" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Book Technician</Link>
-            <Link to="/register-tech" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Become Technician</Link>
-            <Link to="/list-shop" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Advertise Your Shop</Link>
-            <Link to="/privacy" onClick={() => setIsOpen(false)} className="block text-lg font-medium">Privacy Policy</Link>
-            <Link to="/about" onClick={() => setIsOpen(false)} className="block text-lg font-medium">About EaseMate</Link>
-            {user && (
-              <>
-                {user.role === 'admin' && (
-                  <Link to="/admin" onClick={() => setIsOpen(false)} className="block text-lg font-bold text-secondary flex items-center gap-2">
-                    <LayoutDashboard className="w-5 h-5" /> Admin Dashboard
+
+            <div className="pt-4 border-t border-slate-100 space-y-4">
+              {user?.role === 'admin' && (
+                <div className="space-y-4">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest px-4">Admin Controls</p>
+                  <Link 
+                    to="/admin" 
+                    onClick={() => setIsOpen(false)} 
+                    className="flex items-center gap-4 px-4 py-4 bg-emerald-50 text-emerald-600 rounded-2xl font-bold text-xl"
+                  >
+                    <LayoutDashboard className="w-6 h-6" />
+                    Admin Dashboard
                   </Link>
-                )}
-                <Link to="/bookings" onClick={() => setIsOpen(false)} className="block text-lg font-medium">My Bookings</Link>
-                <Link to="/profile" onClick={() => setIsOpen(false)} className="block text-lg font-medium">My Profile</Link>
-              </>
-            )}
-            {user ? (
-              <button onClick={() => { onLogout(); setIsOpen(false); }} className="w-full text-left text-red-500 font-medium">Logout</button>
-            ) : (
-              <Link to="/login" onClick={() => setIsOpen(false)} className="w-full btn-primary">Login</Link>
-            )}
+                </div>
+              )}
+              {user ? (
+                <div className="space-y-4">
+                  <Link 
+                    to="/bookings" 
+                    onClick={() => setIsOpen(false)} 
+                    className="flex items-center gap-4 px-4 py-4 text-slate-700 font-bold text-xl"
+                  >
+                    <Clock className="w-6 h-6" />
+                    {user.role === 'technician' ? 'My Jobs' : 'My Bookings'}
+                  </Link>
+                  <Link 
+                    to="/profile" 
+                    onClick={() => setIsOpen(false)} 
+                    className="flex items-center gap-4 px-4 py-4 text-slate-700 font-bold text-xl"
+                  >
+                    <User className="w-6 h-6" />
+                    My Profile
+                  </Link>
+                  <button 
+                    onClick={() => { onLogout(); setIsOpen(false); }} 
+                    className="flex items-center gap-4 w-full px-4 py-4 text-red-500 font-bold text-xl"
+                  >
+                    <LogOut className="w-6 h-6" />
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <Link to="/login" onClick={() => setIsOpen(false)} className="block text-xl font-bold text-primary px-4">Login</Link>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -338,8 +363,10 @@ const Footer = () => (
     <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-3 gap-12">
       <div>
         <div className="flex items-center gap-2 mb-6">
-          <Wrench className="text-primary w-6 h-6" />
-          <span className="text-2xl font-bold">EaseMate</span>
+          <div className="bg-primary p-1.5 rounded-lg">
+            <Wrench className="text-white w-5 h-5" />
+          </div>
+          <span className="text-2xl font-black">EaseMate</span>
         </div>
         <p className="text-slate-400">
           IT Hub Patna Bihar 800001<br />
@@ -369,6 +396,174 @@ const Footer = () => (
 );
 
 // --- Pages ---
+
+const ContactPage = () => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    subject: '',
+    message: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    // Simulate API call
+    setTimeout(() => {
+      setLoading(false);
+      setSubmitted(true);
+    }, 1500);
+  };
+
+  if (submitted) {
+    return (
+      <div className="pt-32 pb-20 min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white p-12 rounded-[3rem] shadow-xl max-w-md text-center"
+        >
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-10 h-10 text-green-600" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 mb-4">Message Sent!</h2>
+          <p className="text-slate-600 mb-8">Thank you for reaching out. Our team will get back to you shortly.</p>
+          <Link to="/" className="btn-primary w-full">Back to Home</Link>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-24 pb-12 min-h-screen bg-slate-50">
+      <div className="max-w-4xl mx-auto px-4">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-black text-slate-900 mb-4">Contact Us</h1>
+          <p className="text-slate-600 max-w-xl mx-auto">
+            Have questions or need help? We're here for you. Reach out and we'll get back to you as soon as possible.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-6">
+              <div className="w-14 h-14 bg-sky-50 rounded-2xl flex items-center justify-center shrink-0">
+                <MapPin className="w-6 h-6 text-sky-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Office Address</h3>
+                <p className="text-slate-500">IT Hub Patna</p>
+                <p className="text-slate-500">Bihar 800001</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-6">
+              <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0">
+                <Phone className="w-6 h-6 text-emerald-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Phone</h3>
+                <p className="text-slate-500">+91 98765 43210</p>
+                <p className="text-slate-500">+91 87654 32109</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-6">
+              <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0">
+                <Mail className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Email</h3>
+                <p className="text-slate-500">support@easemate.in</p>
+                <p className="text-slate-500">help@easemate.in</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-6">
+              <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center shrink-0">
+                <Clock className="w-6 h-6 text-purple-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Working Hours</h3>
+                <p className="text-slate-500">Mon - Sat: 9:00 AM - 8:00 PM</p>
+                <p className="text-slate-500">Sunday: 10:00 AM - 6:00 PM</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+            <h2 className="text-2xl font-black text-slate-900 mb-8">Send us a Message</h2>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Your Name *</label>
+                <input 
+                  required
+                  type="text"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all"
+                  value={formData.name}
+                  onChange={e => setFormData({...formData, name: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Email Address *</label>
+                <input 
+                  required
+                  type="email"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all"
+                  value={formData.email}
+                  onChange={e => setFormData({...formData, email: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Phone Number</label>
+                <input 
+                  type="tel"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all"
+                  value={formData.phone}
+                  onChange={e => setFormData({...formData, phone: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Subject *</label>
+                <select 
+                  required
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all"
+                  value={formData.subject}
+                  onChange={e => setFormData({...formData, subject: e.target.value})}
+                >
+                  <option value="">Select a subject</option>
+                  <option value="Support">General Support</option>
+                  <option value="Booking">Booking Issue</option>
+                  <option value="Technician">Technician Inquiry</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Message *</label>
+                <textarea 
+                  required
+                  placeholder="How can we help you?"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all min-h-[150px]"
+                  value={formData.message}
+                  onChange={e => setFormData({...formData, message: e.target.value})}
+                />
+              </div>
+              <button 
+                disabled={loading}
+                className="w-full btn-primary py-4 shadow-lg shadow-primary/20"
+              >
+                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Send className="w-5 h-5" /> Send Message</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const DisputePage = () => {
   const [bookingCode, setBookingCode] = useState('');
@@ -528,11 +723,12 @@ const HomePage = () => {
             animate={{ opacity: 1, x: 0 }}
             className="max-w-2xl"
           >
-            <span className="inline-block px-4 py-1 rounded-full bg-primary/10 text-primary font-bold text-sm mb-6">
-              #1 Service Platform in Bihar
-            </span>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-slate-900 leading-tight mb-6">
-              EaseMate – Your <span className="text-primary">Smart Technician</span> at Your Doorstep
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-50 text-sky-600 font-bold text-sm mb-8 border border-sky-100 shadow-sm">
+              <Star className="w-4 h-4 fill-sky-600" /> Trusted by 500+ households in Bihar
+            </div>
+            <h1 className="text-4xl md:text-5xl lg:text-7xl font-black text-slate-900 leading-[1.1] mb-8">
+              EaseMate – Your <br />
+              <span className="text-primary">Smart Technician</span> at Your Doorstep
             </h1>
             <p className="text-lg md:text-xl text-slate-600 mb-10 leading-relaxed">
               Connect with verified local electricians, plumbers, and more. 
@@ -1767,8 +1963,10 @@ const AdminPanel = ({ user }: { user: User | null }) => {
   const [stats, setStats] = useState<any>(null);
   const [techs, setTechs] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'analytics' | 'technicians' | 'bookings'>('analytics');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'technicians' | 'bookings' | 'verifications'>('dashboard');
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [districtFilter, setDistrictFilter] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -1792,27 +1990,45 @@ const AdminPanel = ({ user }: { user: User | null }) => {
   };
 
   const fetchStats = async () => {
-    const res = await fetch('/api/admin/stats', {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    });
-    const data = await res.json();
-    setStats(data);
+    try {
+      const res = await fetch('/api/admin/stats', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin stats', err);
+    }
   };
 
   const fetchTechs = async () => {
-    const res = await fetch('/api/admin/technicians', {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    });
-    const data = await res.json();
-    setTechs(data);
+    try {
+      const res = await fetch('/api/admin/technicians', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTechs(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin technicians', err);
+    }
   };
 
   const fetchBookings = async () => {
-    const res = await fetch('/api/admin/bookings', {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    });
-    const data = await res.json();
-    setBookings(data);
+    try {
+      const res = await fetch('/api/admin/bookings', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBookings(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin bookings', err);
+    }
   };
 
   const verifyTech = async (id: number) => {
@@ -1857,21 +2073,22 @@ const AdminPanel = ({ user }: { user: User | null }) => {
             <h1 className="text-3xl font-black text-slate-900">Admin Dashboard</h1>
             <p className="text-slate-500">Welcome back, {user.name}</p>
           </div>
-          <div className="flex w-full md:w-auto bg-white p-1 rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="flex w-full md:w-auto bg-white p-1 rounded-2xl border border-slate-100 shadow-sm overflow-x-auto no-scrollbar">
             {[
-              { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
               { id: 'technicians', label: 'Technicians', icon: Users },
-              { id: 'bookings', label: 'Bookings', icon: Briefcase }
+              { id: 'bookings', label: 'Bookings', icon: Briefcase },
+              { id: 'verifications', label: 'Verifications', icon: ShieldCheck }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-3 md:px-6 py-2.5 rounded-xl font-bold transition-all whitespace-nowrap ${
+                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all whitespace-nowrap ${
                   activeTab === tab.id ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
-                <span className="text-xs md:text-sm">{tab.label}</span>
+                <span className="text-sm">{tab.label}</span>
               </button>
             ))}
           </div>
@@ -1883,79 +2100,84 @@ const AdminPanel = ({ user }: { user: User | null }) => {
           </div>
         ) : (
           <AnimatePresence mode="wait">
-            {activeTab === 'analytics' && (
+            {activeTab === 'dashboard' && (
               <motion.div
-                key="analytics"
+                key="dashboard"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
               >
                 {stats && (
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-                    {[
-                      { label: 'Total Users', value: stats.userCount, icon: User, color: 'text-blue-500', bg: 'bg-blue-50' },
-                      { label: 'Total Bookings', value: stats.bookingCount, icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' },
-                      { label: 'Total Revenue', value: `₹${stats.revenue.toFixed(2)}`, icon: IndianRupee, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-                      { label: 'Pending Verification', value: stats.pendingTechs, icon: Shield, color: 'text-orange-500', bg: 'bg-orange-50' }
-                    ].map((s, i) => (
-                      <div key={i} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-                        <div className={`${s.bg} w-12 h-12 rounded-2xl flex items-center justify-center mb-4`}>
-                          <s.icon className={`${s.color} w-6 h-6`} />
-                        </div>
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">{s.label}</p>
-                        <p className="text-3xl font-black text-slate-900">{s.value}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                    <h3 className="text-xl font-bold mb-6">Recent Activity</h3>
-                    <div className="space-y-4">
-                      {bookings.slice(0, 5).map(b => (
-                        <div key={b.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                          <div className="flex items-center gap-3">
-                            <div className="bg-white p-2 rounded-lg shadow-sm">
-                              <Wrench className="w-4 h-4 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold text-slate-900">{b.service_type}</p>
-                              <p className="text-xs text-slate-500">{b.customer_name} booked {b.technician_name}</p>
-                            </div>
+                  <>
+                    <h2 className="text-2xl font-black text-slate-900 mb-8">Dashboard Overview</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+                      {[
+                        { label: 'Total Technicians', value: stats.userCount, icon: Users, color: 'text-blue-500', bg: 'bg-blue-50' },
+                        { label: 'Total Bookings', value: stats.bookingCount, icon: Briefcase, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+                        { label: 'Platform Revenue', value: `₹${stats.revenue.toFixed(0)}`, icon: IndianRupee, color: 'text-green-500', bg: 'bg-green-50' },
+                        { label: 'Pending Verifications', value: stats.pendingTechs, icon: Clock, color: 'text-orange-500', bg: 'bg-orange-50' }
+                      ].map((s, i) => (
+                        <div key={i} className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-6">
+                          <div className={`${s.bg} w-16 h-16 rounded-2xl flex items-center justify-center shrink-0`}>
+                            <s.icon className={`${s.color} w-8 h-8`} />
                           </div>
-                          <p className="text-sm font-black text-primary">₹{b.negotiated_price}</p>
+                          <div>
+                            <p className="text-3xl font-black text-slate-900">{s.value}</p>
+                            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{s.label}</p>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                  
-                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                    <h3 className="text-xl font-bold mb-6">Platform Health</h3>
-                    <div className="space-y-6">
-                      <div>
-                        <div className="flex justify-between mb-2">
-                          <span className="text-sm font-bold text-slate-600">Verification Rate</span>
-                          <span className="text-sm font-black text-primary">
-                            {techs.length > 0 ? Math.round((techs.filter(t => t.is_verified).length / techs.length) * 100) : 0}%
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                          <div 
-                            className="bg-primary h-full transition-all duration-1000" 
-                            style={{ width: `${techs.length > 0 ? (techs.filter(t => t.is_verified).length / techs.length) * 100 : 0}%` }}
-                          ></div>
+
+                    <div className="grid md:grid-cols-2 gap-8 mb-12">
+                      <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                        <h3 className="text-xl font-black text-slate-900 mb-8">Bookings by District</h3>
+                        <div className="space-y-6">
+                          {[
+                            { name: 'Patna', count: 65 },
+                            { name: 'Purnia', count: 45 },
+                            { name: 'Darbhanga', count: 78 },
+                            { name: 'Sitamarhi', count: 62 },
+                            { name: 'Madhubani', count: 88 },
+                            { name: 'Madhepura', count: 92 }
+                          ].map((d, i) => (
+                            <div key={i} className="flex items-center gap-6">
+                              <span className="w-24 text-sm font-bold text-slate-600">{d.name}</span>
+                              <div className="flex-1 bg-slate-50 h-4 rounded-full overflow-hidden">
+                                <motion.div 
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${d.count}%` }}
+                                  transition={{ duration: 1, delay: i * 0.1 }}
+                                  className="bg-primary h-full rounded-full"
+                                />
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                        <p className="text-sm text-blue-700 font-medium">
-                          <Sparkles className="w-4 h-4 inline mr-2" />
-                          Tip: Verifying more technicians increases platform trust and booking volume.
-                        </p>
+
+                      <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                        <h3 className="text-xl font-black text-slate-900 mb-8">Revenue Breakdown</h3>
+                        <div className="space-y-6">
+                          {[
+                            { label: 'Customer Subscriptions (₹30)', value: '₹12,450' },
+                            { label: 'Service Fees (Technicians)', value: '₹8,900' },
+                            { label: 'Technician Registrations', value: '₹4,200' }
+                          ].map((r, i) => (
+                            <div key={i} className="flex justify-between items-center py-2">
+                              <span className="text-sm font-bold text-slate-600">{r.label}</span>
+                              <span className="text-sm font-black text-slate-900">{r.value}</span>
+                            </div>
+                          ))}
+                          <div className="pt-6 border-t border-slate-100 flex justify-between items-center">
+                            <span className="text-lg font-black text-slate-900">Total Revenue</span>
+                            <span className="text-lg font-black text-primary">₹25,550</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </motion.div>
             )}
 
@@ -1965,84 +2187,154 @@ const AdminPanel = ({ user }: { user: User | null }) => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden"
               >
-                <div className="p-8 border-b border-slate-100 flex justify-between items-center">
-                  <h2 className="text-2xl font-black text-slate-900">Technician Management</h2>
-                  <div className="flex gap-2">
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                      {techs.filter(t => t.is_verified).length} Verified
-                    </span>
-                    <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">
-                      {techs.filter(t => !t.is_verified).length} Pending
-                    </span>
+                <h2 className="text-3xl font-black text-slate-900 mb-8">Manage Technicians</h2>
+                
+                <div className="flex flex-col md:flex-row gap-4 mb-8">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                    <input 
+                      type="text" 
+                      placeholder="Search..." 
+                      className="w-full pl-12 pr-4 py-4 bg-white border border-slate-100 rounded-2xl shadow-sm focus:ring-2 focus:ring-primary outline-none"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
                   </div>
+                  <select 
+                    className="px-6 py-4 bg-white border border-slate-100 rounded-2xl shadow-sm focus:ring-2 focus:ring-primary outline-none font-bold text-slate-600"
+                    value={districtFilter}
+                    onChange={(e) => setDistrictFilter(e.target.value)}
+                  >
+                    <option value="">All Districts</option>
+                    {['Patna', 'Purnia', 'Darbhanga', 'Sitamarhi', 'Madhubani', 'Madhepura'].map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                      <tr>
-                        <th className="p-6">Technician</th>
-                        <th className="p-6">Skills</th>
-                        <th className="p-6">District</th>
-                        <th className="p-6">Status</th>
-                        <th className="p-6 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {techs.map(t => (
-                        <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-6">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-500">
-                                {t.name[0]}
+
+                <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 text-slate-500 text-xs font-black uppercase tracking-widest">
+                        <tr>
+                          <th className="p-8">Technician</th>
+                          <th className="p-8">District</th>
+                          <th className="p-8">Skills</th>
+                          <th className="p-8">Rating</th>
+                          <th className="p-8">Status</th>
+                          <th className="p-8 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {techs
+                          .filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()) && (!districtFilter || t.district === districtFilter))
+                          .map(t => (
+                          <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="p-8">
+                              <div className="flex items-center gap-4">
+                                <img 
+                                  src={`https://picsum.photos/seed/${t.id}/100/100`} 
+                                  className="w-14 h-14 rounded-full object-cover border-2 border-slate-100"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div>
+                                  <p className="text-lg font-black text-slate-900">{t.name}</p>
+                                  <p className="text-sm text-slate-400 font-medium">{t.email}</p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-bold text-slate-900">{t.name}</p>
-                                <p className="text-xs text-slate-500">{t.email}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-6">
-                            <span className="px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold text-slate-600">
-                              {t.skills}
-                            </span>
-                          </td>
-                          <td className="p-6 text-sm text-slate-600 font-medium">{t.district}</td>
-                          <td className="p-6">
-                            {t.is_verified ? 
-                              <span className="flex items-center gap-1 text-green-600 text-xs font-bold">
-                                <CheckCircle2 className="w-4 h-4" /> Verified
-                              </span> :
-                              <span className="flex items-center gap-1 text-orange-600 text-xs font-bold">
-                                <Clock className="w-4 h-4" /> Pending
+                            </td>
+                            <td className="p-8 text-sm font-bold text-slate-600">{t.district}</td>
+                            <td className="p-8">
+                              <span className="px-4 py-1.5 bg-slate-100 rounded-xl text-xs font-black text-slate-600 uppercase tracking-widest">
+                                {t.skills}
                               </span>
-                            }
-                          </td>
-                          <td className="p-6 text-right">
-                            <div className="flex justify-end gap-2">
-                              {!t.is_verified && (
-                                <button 
-                                  onClick={() => verifyTech(t.id)} 
-                                  className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
-                                  title="Verify"
-                                >
-                                  <CheckCircle2 className="w-5 h-5" />
-                                </button>
-                              )}
+                            </td>
+                            <td className="p-8">
+                              <div className="flex items-center gap-1 text-yellow-500 font-black">
+                                <Star className="w-4 h-4 fill-current" /> {t.rating || '4.5'}
+                              </div>
+                            </td>
+                            <td className="p-8">
+                              {t.is_verified ? 
+                                <span className="flex items-center gap-2 text-green-600 text-xs font-black uppercase tracking-widest">
+                                  <CheckCircle2 className="w-4 h-4" /> Active
+                                </span> :
+                                <span className="flex items-center gap-2 text-orange-600 text-xs font-black uppercase tracking-widest">
+                                  <Clock className="w-4 h-4" /> Pending
+                                </span>
+                              }
+                            </td>
+                            <td className="p-8 text-right">
                               <button 
-                                onClick={() => deleteTech(t.id)} 
-                                className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-                                title="Delete"
+                                onClick={() => deleteTech(t.id)}
+                                className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                               >
                                 <Trash2 className="w-5 h-5" />
                               </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'verifications' && (
+              <motion.div
+                key="verifications"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                <h2 className="text-3xl font-black text-slate-900 mb-8">Pending Verifications</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {techs.filter(t => !t.is_verified).map(t => (
+                    <div key={t.id} className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+                      <div className="flex justify-between items-start mb-6">
+                        <div>
+                          <h3 className="text-xl font-black text-slate-900">{t.name}</h3>
+                          <p className="text-sm text-slate-400 font-medium">{t.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-4 mb-8">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl">
+                          <MapPin className="w-4 h-4 text-red-400" /> {t.district}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl">
+                          <Wrench className="w-4 h-4 text-primary" /> {t.skills}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl">
+                          Applied: {new Date(t.created_at || Date.now()).toISOString().split('T')[0]}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <button 
+                          onClick={() => verifyTech(t.id)}
+                          className="flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Approve
+                        </button>
+                        <button 
+                          onClick={() => deleteTech(t.id)}
+                          className="flex items-center justify-center gap-2 py-3 bg-red-500 text-white rounded-2xl font-bold text-sm hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                        >
+                          <X className="w-4 h-4" /> Reject
+                        </button>
+                        <button className="flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-100 transition-all">
+                          <Search className="w-4 h-4" /> View
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {techs.filter(t => !t.is_verified).length === 0 && (
+                    <div className="col-span-full py-20 text-center bg-white rounded-[2.5rem] border border-dashed border-slate-200">
+                      <ShieldCheck className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                      <p className="text-slate-400 font-bold">No pending verifications</p>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -3830,7 +4122,7 @@ export default function App() {
   useEffect(() => {
     const verifySession = async () => {
       const token = getToken();
-      if (!token) return;
+      if (!token || token === 'null' || token === 'undefined') return;
 
       try {
         const res = await fetch('/api/users/me', {
@@ -3841,7 +4133,7 @@ export default function App() {
           handleLogout();
         }
       } catch (err) {
-        console.error('Session verification failed:', err);
+        // Silent fail for session verification to avoid console noise on network blips
       }
     };
     verifySession();
@@ -3873,6 +4165,7 @@ export default function App() {
             <Route path="/negotiate/:id" element={<NegotiatePage user={user} />} />
             <Route path="/admin" element={<AdminPanel user={user} />} />
             <Route path="/dispute" element={<DisputePage />} />
+            <Route path="/contact" element={<ContactPage />} />
             <Route path="/shop" element={<ShopPage />} />
             <Route path="/checkout/:id" element={<CheckoutPage user={user} />} />
             <Route path="/list-shop" element={<ShopListingPage user={user} />} />
