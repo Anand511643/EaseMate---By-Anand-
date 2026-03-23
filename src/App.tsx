@@ -29,6 +29,8 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle2,
+  Camera,
+  Upload,
   BarChart3,
   Users,
   Briefcase,
@@ -307,6 +309,25 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
               Shop
             </Link>
 
+            {user ? (
+              <button 
+                onClick={() => { onLogout(); setIsOpen(false); }} 
+                className="flex items-center gap-4 w-full px-4 py-4 text-red-500 font-bold text-xl"
+              >
+                <LogOut className="w-6 h-6" />
+                Logout
+              </button>
+            ) : (
+              <Link 
+                to="/login" 
+                onClick={() => setIsOpen(false)} 
+                className="flex items-center gap-4 w-full px-4 py-4 text-primary font-bold text-xl"
+              >
+                <User className="w-6 h-6" />
+                Login / Sign Up
+              </Link>
+            )}
+
             <div className="pt-4 border-t border-slate-100 space-y-4">
               {user?.role === 'admin' && (
                 <div className="space-y-4">
@@ -321,7 +342,7 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
                   </Link>
                 </div>
               )}
-              {user ? (
+              {user && (
                 <div className="space-y-4">
                   <Link 
                     to="/bookings" 
@@ -339,16 +360,7 @@ const Navbar = ({ user, onLogout }: { user: User | null; onLogout: () => void })
                     <User className="w-6 h-6" />
                     My Profile
                   </Link>
-                  <button 
-                    onClick={() => { onLogout(); setIsOpen(false); }} 
-                    className="flex items-center gap-4 w-full px-4 py-4 text-red-500 font-bold text-xl"
-                  >
-                    <LogOut className="w-6 h-6" />
-                    Logout
-                  </button>
                 </div>
-              ) : (
-                <Link to="/login" onClick={() => setIsOpen(false)} className="block text-xl font-bold text-primary px-4">Login</Link>
               )}
             </div>
           </motion.div>
@@ -1071,6 +1083,13 @@ const BookingPage = ({ user }: { user: User | null }) => {
                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full flex items-center gap-1 text-sm font-bold">
                   <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> {tech.rating}
                 </div>
+                {tech.availability_status && tech.availability_status !== 'available' && (
+                  <div className={`absolute top-4 left-4 backdrop-blur px-3 py-1 rounded-full flex items-center gap-1 text-[10px] font-black uppercase tracking-wider shadow-lg ${
+                    tech.availability_status === 'unavailable' ? 'bg-red-500/90 text-white' : 'bg-amber-500/90 text-white'
+                  }`}>
+                    {tech.availability_status.replace('-', ' ')}
+                  </div>
+                )}
               </div>
               <div className="p-6">
                 <div className="flex justify-between items-start mb-4">
@@ -1088,11 +1107,17 @@ const BookingPage = ({ user }: { user: User | null }) => {
                   <span className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-lg"><ShieldCheck className="w-3.5 h-3.5" /> {tech.experience}y Exp</span>
                 </div>
                 <button 
-                  disabled={bookingLoading === tech.id}
+                  disabled={bookingLoading === tech.id || (tech.availability_status && tech.availability_status !== 'available')}
                   onClick={() => handleBook(tech.id)}
-                  className="w-full btn-primary py-3.5 shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all disabled:opacity-50"
+                  className="w-full btn-primary py-3.5 shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all disabled:opacity-50 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
                 >
-                  {bookingLoading === tech.id ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Book & Negotiate'}
+                  {bookingLoading === tech.id ? (
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                  ) : (tech.availability_status && tech.availability_status !== 'available') ? (
+                    'Currently Unavailable'
+                  ) : (
+                    'Book & Negotiate'
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -1964,6 +1989,7 @@ const AdminPanel = ({ user }: { user: User | null }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'technicians' | 'bookings' | 'verifications'>('dashboard');
+  const [selectedTech, setSelectedTech] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [districtFilter, setDistrictFilter] = useState('');
@@ -2307,24 +2333,32 @@ const AdminPanel = ({ user }: { user: User | null }) => {
                           <Wrench className="w-4 h-4 text-primary" /> {t.skills}
                         </div>
                         <div className="flex items-center gap-2 text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl">
+                          <Briefcase className="w-4 h-4 text-orange-400" /> {t.experience} Years Exp.
+                        </div>
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl">
                           Applied: {new Date(t.created_at || Date.now()).toISOString().split('T')[0]}
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <button 
+                            onClick={() => verifyTech(t.id)}
+                            className="flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                          >
+                            <CheckCircle2 className="w-4 h-4" /> Approve
+                          </button>
+                          <button 
+                            onClick={() => deleteTech(t.id)}
+                            className="flex items-center justify-center gap-2 py-3 bg-red-500 text-white rounded-2xl font-bold text-sm hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                          >
+                            <X className="w-4 h-4" /> Reject
+                          </button>
+                        </div>
                         <button 
-                          onClick={() => verifyTech(t.id)}
-                          className="flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                          onClick={() => setSelectedTech(t)}
+                          className="w-full flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-100 transition-all"
                         >
-                          <CheckCircle2 className="w-4 h-4" /> Approve
-                        </button>
-                        <button 
-                          onClick={() => deleteTech(t.id)}
-                          className="flex items-center justify-center gap-2 py-3 bg-red-500 text-white rounded-2xl font-bold text-sm hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
-                        >
-                          <X className="w-4 h-4" /> Reject
-                        </button>
-                        <button className="flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-100 transition-all">
-                          <Search className="w-4 h-4" /> View
+                          <Search className="w-4 h-4" /> View Details
                         </button>
                       </div>
                     </div>
@@ -2414,6 +2448,106 @@ const AdminPanel = ({ user }: { user: User | null }) => {
             )}
           </AnimatePresence>
         )}
+
+        <AnimatePresence>
+          {selectedTech && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden relative"
+              >
+                <button 
+                  onClick={() => setSelectedTech(null)}
+                  className="absolute right-8 top-8 p-2 hover:bg-slate-100 rounded-full transition-colors z-10"
+                >
+                  <X className="w-6 h-6 text-slate-400" />
+                </button>
+
+                <div className="p-10 max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center gap-6 mb-10">
+                    <img 
+                      src={selectedTech.profile_picture_url || `https://picsum.photos/seed/${selectedTech.id}/200/200`} 
+                      className="w-24 h-24 rounded-[2rem] object-cover border-4 border-white shadow-xl"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div>
+                      <h2 className="text-3xl font-black text-slate-900">{selectedTech.name}</h2>
+                      <p className="text-slate-400 font-medium">{selectedTech.email}</p>
+                      <div className="flex gap-2 mt-2">
+                        <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full">
+                          {selectedTech.skills}
+                        </span>
+                        <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest rounded-full">
+                          {selectedTech.district}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8 mb-10">
+                    <div className="bg-slate-50 p-6 rounded-3xl">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">ID Number</p>
+                      <p className="text-lg font-black text-slate-900">{selectedTech.id_number || 'Not Provided'}</p>
+                    </div>
+                    <div className="bg-slate-50 p-6 rounded-3xl">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Experience</p>
+                      <p className="text-lg font-black text-slate-900">{selectedTech.experience} Years</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-10">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">ID Proof Document</p>
+                    {selectedTech.id_proof_url ? (
+                      <div className="bg-slate-900 rounded-3xl overflow-hidden aspect-video relative group">
+                        <img 
+                          src={selectedTech.id_proof_url} 
+                          className="w-full h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                        <a 
+                          href={selectedTech.id_proof_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold gap-2"
+                        >
+                          <Search className="w-5 h-5" /> View Full Document
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-100 py-12 rounded-3xl text-center">
+                        <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-slate-400 font-bold">No ID proof document uploaded</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => {
+                        verifyTech(selectedTech.id);
+                        setSelectedTech(null);
+                      }}
+                      className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl font-black text-sm hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-5 h-5" /> Approve Technician
+                    </button>
+                    <button 
+                      onClick={() => {
+                        deleteTech(selectedTech.id);
+                        setSelectedTech(null);
+                      }}
+                      className="px-8 py-4 bg-red-50 text-red-500 rounded-2xl font-black text-sm hover:bg-red-100 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Trash2 className="w-5 h-5" /> Reject
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -2583,7 +2717,7 @@ const PrivacyPolicy = () => (
             1. Professional Conduct
           </h2>
           <p className="text-slate-600 leading-relaxed">
-            EaseMate enforces a stringent code of conduct. We maintain a zero-tolerance policy regarding harassment, fraudulent activity, and unprofessional behavior. All users—both customers and service providers—are legally bound to maintain professional decorum during all platform-facilitated interactions.
+            EaseMate enforces a stringent code of conduct. We maintain a zero-tolerance policy regarding harassment, fraudulent activity, and unprofessional behavior. All users—both customers and service providers—are legally bound to maintain professional decorum during all platform-facilitated interactions. Failure to comply may result in immediate account suspension or termination.
           </p>
         </section>
 
@@ -2592,7 +2726,7 @@ const PrivacyPolicy = () => (
             <div className="w-1.5 h-6 bg-primary rounded-full"></div>
             2. Service Contribution Framework
           </h2>
-          <p className="text-slate-600 mb-4">Technicians agree to the following platform contribution structure based on negotiated service values:</p>
+          <p className="text-slate-600 mb-4">Technicians agree to the following platform contribution structure based on negotiated service values. These contributions support platform maintenance, marketing, and dispute resolution services:</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
               <p className="text-xs font-bold text-slate-400 uppercase mb-1">Tier 1 (₹250 - ₹450)</p>
@@ -2654,19 +2788,85 @@ const PrivacyPolicy = () => (
         <section className="border-t border-slate-100 pt-10">
           <h2 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-2">
             <div className="w-1.5 h-6 bg-secondary rounded-full"></div>
-            5. Data Privacy & Security
+            5. Information Collection
           </h2>
           <div className="space-y-4 text-slate-600 leading-relaxed">
-            <p>
-              EaseMate is committed to protecting your personal data. We employ industry-standard encryption and security measures to safeguard your information.
-            </p>
+            <p>We collect information that you provide directly to us when you create an account, use our services, or communicate with us. This includes:</p>
             <ul className="list-disc pl-6 space-y-2">
-              <li><strong className="text-slate-900">Data Collection:</strong> We collect only necessary information required for service facilitation, including name, contact details, and location.</li>
-              <li><strong className="text-slate-900">Usage:</strong> Your data is used solely for booking management, dispute resolution, and platform improvement.</li>
-              <li><strong className="text-slate-900">Third-Party Sharing:</strong> We do not sell or lease your personal data to third parties. Information is shared with service providers only to the extent necessary for service delivery.</li>
-              <li><strong className="text-slate-900">User Rights:</strong> You have the right to access, correct, or request deletion of your personal data at any time through your account settings.</li>
+              <li><strong className="text-slate-900">Personal Identifiers:</strong> Name, email address, phone number, and physical address.</li>
+              <li><strong className="text-slate-900">Professional Information:</strong> For technicians, we collect skills, experience, ID proof, and profile pictures.</li>
+              <li><strong className="text-slate-900">Transaction Data:</strong> Details about services booked, negotiated prices, and payment history.</li>
+              <li><strong className="text-slate-900">Communication Logs:</strong> Records of chats and interactions between users on the platform.</li>
             </ul>
           </div>
+        </section>
+
+        <section className="border-t border-slate-100 pt-10">
+          <h2 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-secondary rounded-full"></div>
+            6. How We Use Your Information
+          </h2>
+          <div className="space-y-4 text-slate-600 leading-relaxed">
+            <p>We use the collected information for various purposes, including:</p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>To facilitate service bookings and connections between customers and technicians.</li>
+              <li>To process payments and platform contributions.</li>
+              <li>To provide customer support and resolve disputes.</li>
+              <li>To verify the identity and credentials of service providers.</li>
+              <li>To improve our platform, services, and user experience.</li>
+              <li>To send administrative messages, updates, and security alerts.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section className="border-t border-slate-100 pt-10">
+          <h2 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-secondary rounded-full"></div>
+            7. Data Sharing and Disclosure
+          </h2>
+          <div className="space-y-4 text-slate-600 leading-relaxed">
+            <p>We do not sell your personal information. We share your data only in the following circumstances:</p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li><strong className="text-slate-900">With Service Providers:</strong> We share necessary details between customers and technicians to enable service delivery.</li>
+              <li><strong className="text-slate-900">For Legal Reasons:</strong> We may disclose information if required by law or in response to valid legal requests.</li>
+              <li><strong className="text-slate-900">Business Transfers:</strong> In the event of a merger, acquisition, or sale of assets, user information may be transferred.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section className="border-t border-slate-100 pt-10">
+          <h2 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-secondary rounded-full"></div>
+            8. Data Security
+          </h2>
+          <p className="text-slate-600 leading-relaxed">
+            EaseMate implements robust security measures, including industry-standard encryption (SSL/TLS), to protect your data from unauthorized access, disclosure, or alteration. However, no method of transmission over the internet is 100% secure, and we cannot guarantee absolute security.
+          </p>
+        </section>
+
+        <section className="border-t border-slate-100 pt-10">
+          <h2 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-secondary rounded-full"></div>
+            9. Your Rights and Choices
+          </h2>
+          <div className="space-y-4 text-slate-600 leading-relaxed">
+            <p>You have certain rights regarding your personal information:</p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li><strong className="text-slate-900">Access and Correction:</strong> You can view and update your profile information through your account settings.</li>
+              <li><strong className="text-slate-900">Data Deletion:</strong> You may request the deletion of your account and associated data, subject to legal and contractual obligations.</li>
+              <li><strong className="text-slate-900">Communication Preferences:</strong> You can opt-out of receiving promotional communications from us.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section className="border-t border-slate-100 pt-10">
+          <h2 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-secondary rounded-full"></div>
+            10. Contact Us
+          </h2>
+          <p className="text-slate-600 leading-relaxed">
+            If you have any questions or concerns about this Privacy Policy or our data practices, please contact our Data Protection Officer at <span className="text-primary font-bold">privacy@easemate.com</span>.
+          </p>
         </section>
       </div>
     </div>
@@ -2686,6 +2886,7 @@ const PrivacyPolicy = () => (
   const [experience, setExperience] = useState('');
   const [baseCharge, setBaseCharge] = useState('500');
   const [bio, setBio] = useState('');
+  const [profilePictureUrl, setProfilePictureUrl] = useState('');
   const [role, setRole] = useState<'customer' | 'technician'>('customer');
   const [rememberMe, setRememberMe] = useState(true);
   const [showForgot, setShowForgot] = useState(false);
@@ -2713,6 +2914,17 @@ const PrivacyPolicy = () => (
 
   const districts = ['Patna', 'Purnia', 'Darbhanga', 'Sitamarhi', 'Madhubani', 'Madhepura', 'Katihar', 'Saharsa', 'East Champaran', 'West Champaran', 'Begusarai', 'Barauni'];
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfilePictureUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     console.log(`handleSubmit started: ${type} for ${email}`);
@@ -2727,7 +2939,8 @@ const PrivacyPolicy = () => (
             skills, 
             experience: Number(experience), 
             base_charge: Number(baseCharge), 
-            bio 
+            bio,
+            profile_picture_url: profilePictureUrl
           };
       
       console.log(`Fetching ${endpoint}...`);
@@ -2848,23 +3061,40 @@ const PrivacyPolicy = () => (
                     <option value="Car Wash">Car Wash</option>
                     <option value="Haircut">Haircut</option>
                   </select>
-                  <div className="flex gap-4">
-                    <input 
-                      type="number" placeholder="Exp (Years)" required
-                      className="flex-1 py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
-                      value={experience} onChange={e => setExperience(e.target.value)}
-                    />
-                    <input 
-                      type="number" placeholder="Base Charge (₹)" required
-                      className="flex-1 py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
-                      value={baseCharge} onChange={e => setBaseCharge(e.target.value)}
-                    />
-                  </div>
+                  <input 
+                    type="number" placeholder="Exp (Years)" required
+                    className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
+                    value={experience} onChange={e => setExperience(e.target.value)}
+                  />
+                  <input 
+                    type="number" placeholder="Base Charge (₹)" required
+                    className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
+                    value={baseCharge} onChange={e => setBaseCharge(e.target.value)}
+                  />
                   <textarea 
                     placeholder="Short Bio / Description of your work"
                     className="w-full py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary min-h-[100px]"
                     value={bio} onChange={e => setBio(e.target.value)}
                   />
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase ml-1">Profile Picture</label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden border-2 border-dashed border-slate-200">
+                        {profilePictureUrl ? (
+                          <img src={profilePictureUrl} alt="Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <Camera className="w-6 h-6 text-slate-300" />
+                        )}
+                      </div>
+                      <label className="flex-1 cursor-pointer">
+                        <div className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
+                          <Upload className="w-4 h-4" />
+                          <span className="text-sm font-medium">Upload Photo</span>
+                        </div>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                      </label>
+                    </div>
+                  </div>
                 </>
               )}
             </>
@@ -3718,6 +3948,8 @@ const TechnicianDashboard = ({ user }: { user: User | null }) => {
   const [baseCharge, setBaseCharge] = useState('');
   const [bio, setBio] = useState('');
   const [district, setDistrict] = useState('');
+  const [profilePictureUrl, setProfilePictureUrl] = useState('');
+  const [availabilityStatus, setAvailabilityStatus] = useState('available');
 
   useEffect(() => {
     if (!user || user.role !== 'technician') {
@@ -3746,11 +3978,24 @@ const TechnicianDashboard = ({ user }: { user: User | null }) => {
         setBaseCharge(tech.base_charge?.toString() || '');
         setBio(tech.bio || '');
         setDistrict(tech.district || '');
+        setProfilePictureUrl(tech.profile_picture_url || '');
+        setAvailabilityStatus(tech.availability_status || 'available');
       }
     } catch (err) {
       console.error('Fetch Tech Data Error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfilePictureUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -3769,7 +4014,9 @@ const TechnicianDashboard = ({ user }: { user: User | null }) => {
           experience: Number(experience),
           base_charge: Number(baseCharge),
           bio,
-          district
+          district,
+          profile_picture_url: profilePictureUrl,
+          availability_status: availabilityStatus
         })
       });
       if (res.ok) {
@@ -3794,8 +4041,18 @@ const TechnicianDashboard = ({ user }: { user: User | null }) => {
           <div className="w-full md:w-1/3 space-y-6">
             <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
               <div className="flex flex-col items-center text-center mb-8">
-                <div className="w-24 h-24 bg-secondary/10 rounded-full flex items-center justify-center mb-4">
-                  <User className="w-12 h-12 text-secondary" />
+                <div className="relative group">
+                  <div className="w-24 h-24 bg-secondary/10 rounded-full flex items-center justify-center mb-4 overflow-hidden border-4 border-white shadow-lg">
+                    {profilePictureUrl ? (
+                      <img src={profilePictureUrl} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-12 h-12 text-secondary" />
+                    )}
+                  </div>
+                  <label className="absolute bottom-4 right-0 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors border border-slate-100">
+                    <Camera className="w-4 h-4 text-secondary" />
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                  </label>
                 </div>
                 <h2 className="text-2xl font-black text-slate-900">{user?.name}</h2>
                 <p className="text-slate-500 font-medium">{techData?.is_verified ? 'Verified Professional' : 'Verification Pending'}</p>
@@ -3810,7 +4067,35 @@ const TechnicianDashboard = ({ user }: { user: User | null }) => {
                 )}
               </div>
 
-              <form onSubmit={handleUpdateProfile} className="space-y-4">
+              <div className="pt-6 border-t border-slate-100">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Availability Status</h3>
+                <div className="grid grid-cols-1 gap-2">
+                  {[
+                    { id: 'available', label: 'Available', icon: CheckCircle2, activeClass: 'border-emerald-500 bg-emerald-50 text-emerald-700', dotClass: 'bg-emerald-500', iconClass: 'text-emerald-500' },
+                    { id: 'unavailable', label: 'Unavailable', icon: X, activeClass: 'border-red-500 bg-red-50 text-red-700', dotClass: 'bg-red-500', iconClass: 'text-red-500' },
+                    { id: 'on-break', label: 'On Break', icon: Clock, activeClass: 'border-amber-500 bg-amber-50 text-amber-700', dotClass: 'bg-amber-500', iconClass: 'text-amber-500' }
+                  ].map((status) => (
+                    <button
+                      key={status.id}
+                      type="button"
+                      onClick={() => setAvailabilityStatus(status.id)}
+                      className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
+                        availabilityStatus === status.id 
+                          ? status.activeClass 
+                          : 'border-slate-50 bg-slate-50 hover:border-slate-100 text-slate-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${status.dotClass}`} />
+                        <span className="text-xs font-bold">{status.label}</span>
+                      </div>
+                      {availabilityStatus === status.id && <status.icon className={`w-4 h-4 ${status.iconClass}`} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <form onSubmit={handleUpdateProfile} className="mt-8 space-y-4">
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase ml-1">Primary Skill</label>
                   <select 
@@ -3827,23 +4112,21 @@ const TechnicianDashboard = ({ user }: { user: User | null }) => {
                     <option value="Haircut">Haircut</option>
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase ml-1">Experience</label>
-                    <input 
-                      type="number"
-                      className="w-full mt-1 py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
-                      value={experience} onChange={e => setExperience(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase ml-1">Base Charge</label>
-                    <input 
-                      type="number"
-                      className="w-full mt-1 py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
-                      value={baseCharge} onChange={e => setBaseCharge(e.target.value)}
-                    />
-                  </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">Experience</label>
+                  <input 
+                    type="number"
+                    className="w-full mt-1 py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
+                    value={experience} onChange={e => setExperience(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">Base Charge</label>
+                  <input 
+                    type="number"
+                    className="w-full mt-1 py-2.5 px-4 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-secondary"
+                    value={baseCharge} onChange={e => setBaseCharge(e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase ml-1">District</label>

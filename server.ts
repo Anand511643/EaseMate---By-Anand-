@@ -57,9 +57,11 @@ async function startServer() {
         id_number TEXT,
         id_proof_url TEXT,
         is_verified INTEGER DEFAULT 0,
+        availability_status TEXT DEFAULT 'available',
         base_charge INTEGER,
         rating REAL DEFAULT 5.0,
         bio TEXT,
+        profile_picture_url TEXT,
         subscription_expiry DATETIME,
         FOREIGN KEY (user_id) REFERENCES users(id)
       );
@@ -157,6 +159,7 @@ async function startServer() {
       "ALTER TABLE bookings ADD COLUMN payment_status TEXT DEFAULT 'pending'",
       'ALTER TABLE users ADD COLUMN district TEXT',
       'ALTER TABLE technicians ADD COLUMN id_number TEXT',
+      'ALTER TABLE technicians ADD COLUMN profile_picture_url TEXT',
       'ALTER TABLE messages ADD COLUMN attachment_url TEXT',
       'ALTER TABLE messages ADD COLUMN attachment_type TEXT',
       'ALTER TABLE bookings ADD COLUMN booking_number TEXT',
@@ -365,9 +368,9 @@ async function startServer() {
           name, email, hashedPassword, role, phone, location, district
         );
         if (role === 'technician') {
-          const { skills, experience, id_number, base_charge, bio } = req.body;
-          db.prepare('INSERT INTO technicians (user_id, skills, experience, district, id_number, base_charge, bio) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
-            result.lastInsertRowid, skills, experience, district, id_number, base_charge || 500, bio || ''
+          const { skills, experience, id_number, base_charge, bio, profile_picture_url } = req.body;
+          db.prepare('INSERT INTO technicians (user_id, skills, experience, district, id_number, base_charge, bio, profile_picture_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+            result.lastInsertRowid, skills, experience, district, id_number, base_charge || 500, bio || '', profile_picture_url || ''
           );
         }
         const token = jwt.sign({ id: Number(result.lastInsertRowid), role, email }, JWT_SECRET);
@@ -427,9 +430,9 @@ async function startServer() {
 
     app.put('/api/technicians/me', authenticate, (req: any, res) => {
       if (req.user.role !== 'technician') return res.status(403).json({ error: 'Forbidden' });
-      const { skills, experience, base_charge, bio, district } = req.body;
-      db.prepare('UPDATE technicians SET skills = ?, experience = ?, base_charge = ?, bio = ?, district = ? WHERE user_id = ?').run(
-        skills, experience, base_charge, bio, district, req.user.id
+      const { skills, experience, base_charge, bio, district, profile_picture_url, availability_status } = req.body;
+      db.prepare('UPDATE technicians SET skills = ?, experience = ?, base_charge = ?, bio = ?, district = ?, profile_picture_url = ?, availability_status = ? WHERE user_id = ?').run(
+        skills, experience, base_charge, bio, district, profile_picture_url, availability_status, req.user.id
       );
       res.json({ success: true });
     });
@@ -463,6 +466,10 @@ async function startServer() {
         if (!tech) {
           console.error(`Tech record not found for id: ${techId}`);
           return res.status(404).json({ error: 'Technician profile not found' });
+        }
+
+        if (tech.availability_status && tech.availability_status !== 'available') {
+          return res.status(400).json({ error: `Technician is currently ${tech.availability_status}` });
         }
 
         if (!tech.user_id) {
